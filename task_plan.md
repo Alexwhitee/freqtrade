@@ -95,3 +95,4 @@ Verify container health, deployed hashes, API authentication, risk-guard freshne
 | Approval-flag patch expected unquoted values | Read the exact UTF-8 lines and reissued the patch with the existing quotes. |
 | Network-disabled backtest could not load OKX public market metadata | Re-run the read-only backtest with network access and temporary non-secret credentials; no private API or order command is used. |
 | One full local pytest run hit a transient Windows `WinError 5` during `os.replace` in a temp state file | The targeted test and immediate full rerun both passed; record as an environment-only flake and retain the passing rerun as the final result. |
+| Final remote Python one-liner was expanded by PowerShell quoting | Replaced it with fixed read-only `grep`/`test` checks; the dry-run flags and cleanup state were confirmed. |
