@@ -46,3 +46,6 @@
 - Created GitHub fork `Alexwhitee/freqtrade` and added it as the `fork` remote.
 - SSH push timed out without creating the branch; prepared an authenticated HTTPS retry instead of repeating the stalled transport.
 - HTTPS reached GitHub but was rejected because the shallow old base made existing workflows appear changed; selected a clean rebase onto the fork's current `develop` before the final push attempt.
+- Fetched fork `develop` at `e5fd2fec`, rebased all five commits without conflicts, and confirmed the branch diff contains only the intended 21 files.
+- Re-ran all 23 deployment tests after rebasing; all passed in 0.068 seconds.
+- Successfully pushed `codex/okx-strategy-hardening` to `Alexwhitee/freqtrade` and configured the local branch to track it.

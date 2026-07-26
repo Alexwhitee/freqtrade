@@ -30,7 +30,7 @@ Inventory every changed and untracked file, reject secrets/caches, and review th
 Create a `codex/` branch and commit all safe project changes in coherent units.
 
 ### Phase 7: Push
-**Status:** in_progress
+**Status:** complete
 Push the branch to the configured remote and verify its upstream state.
 
 ## Decision Rules
