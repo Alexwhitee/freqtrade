@@ -1,0 +1,38 @@
+---
+services:
+  freqtrade:
+    image: freqtradeorg/freqtrade:stable
+    restart: unless-stopped
+    container_name: freqtrade
+    env_file:
+      - .env
+    volumes:
+      - "./runtime:/freqtrade/user_data"
+    ports:
+      - "127.0.0.1:8081:8080"
+    command: >
+      trade
+      --logfile /freqtrade/user_data/logs/freqtrade.log
+      --db-url sqlite:////freqtrade/user_data/tradesv3.sqlite
+      --config /freqtrade/user_data/config.json
+      --strategy OkxAggressiveTrendV2
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/v1/ping', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+
+  risk-guard:
+    image: freqtradeorg/freqtrade:stable
+    restart: unless-stopped
+    container_name: freqtrade-risk-guard
+    env_file:
+      - .env
+    depends_on:
+      freqtrade:
+        condition: service_healthy
+    volumes:
+      - "./runtime:/freqtrade/user_data"
+    entrypoint: ["python"]
+    command: ["/freqtrade/user_data/risk_guard.py"]
