@@ -85,3 +85,32 @@
 - Coverage expanded from one V2 direction test to 14 V2 tests, plus 9 Risk Guard tests (23 total deployment tests).
 - Final tests passed, Python compilation passed, and Freqtrade 2026.6 strategy discovery reported V1 and V2 as `OK`.
 - Local container validation requires non-empty API username/password and a JWT secret of at least 32 characters, as already represented by `.env.example`; secrets were not written into configuration.
+
+## 2026-07-26 Deployment Blocker
+- CloudCone preflight passed with `dry_run=true`, zero trades/open positions, all live gates false, protected environment permissions, synchronized time, and expected egress IP.
+- The supplied key/secret match the existing remote values, but OKX returns `50111 Invalid OK-ACCESS-KEY` for both live and sandbox private API calls.
+- The supplied account login password is not an API passphrase; the full-width punctuation form cannot be encoded as an OKX authentication header.
+- Deployment was intentionally stopped before any container shutdown. A newly created OKX API key, secret, and dedicated API passphrase are required.
+
+## 2026-07-27 Credential And Release Check
+- The ignored local `.env` has valid syntax, no duplicate keys, protected Windows ACLs, and remains Git-ignored.
+- The current OKX API key, secret, and dedicated API passphrase passed a read-only `fetch_balance` call from the whitelisted CloudCone egress IP.
+- The local Freqtrade API username/password pair matches the Risk Guard pair and authenticated successfully against the current remote read-only balance endpoint.
+- Docker Compose configuration validation passed and `runtime/config.json` remains `dry_run=true`.
+- The three Risk Guard approval flags in the local `.env` are currently true and must be forced false before any deployment.
+- Existing aggregate backtest claims belong to the old deployed strategy hash. The hardened candidate requires its own backtest before it can replace the active deployment.
+
+## 2026-07-27 Hardened V2 Backtest
+- Current candidate `OkxAggressiveTrendV2` was executed from `/root/freqtrade-candidate-20260720` with the CloudCone historical dataset, 1h main timeframe, 15m detail timeframe, protections enabled, and 0.1% fee per side.
+- Full range (effective 2021-02-22 through 2026-01-01): 35 trades, +9.834 USDT / +32.78%, PF 2.08, win rate 54.3%, absolute drawdown 3.177 USDT / 9.57%, Sharpe 0.09, mean-profit p-value 0.1908.
+- The full-range result has a 514-day drawdown period and no historical funding data for the tested period, so it is not a complete futures-cost test.
+- 2025 holdout: 9 trades, -0.219 USDT / -0.73%, PF 0.83, Sharpe -0.04, mean-profit p-value 0.8337, drawdown 2.19%.
+- Decision: evidence is insufficient for live trading. Keep live approvals disabled and use dry-run only for operational observation.
+
+## 2026-07-27 Dry-Run Deployment Result
+- Candidate `.env` was uploaded only to the protected candidate directory, validated with Compose, and removed after installation.
+- Installer now gives the candidate `.env` precedence over the old deployment credentials, preventing a stale passphrase from being silently reused.
+- Existing deployment was backed up at `/root/freqtrade-backups/aggressive-20260726T173719Z` before replacement.
+- Freqtrade is `running|healthy`; Risk Guard is `running`; API read-only balance request returned HTTP 200.
+- Runtime remains `dry_run=true`, all three approval flags are false, total/open trades are both zero, and Risk Guard reports `api_failures=0`, `entries_blocked=false`, `simulation_mode=true`.
+- Startup log scan found no runtime error, traceback, exception, or failed startup message.

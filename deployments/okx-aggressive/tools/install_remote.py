@@ -57,6 +57,46 @@ def read_env_file(path: Path) -> dict[str, str]:
     return values
 
 
+def resolve_credentials(
+    old_config: dict[str, object],
+    old_env: dict[str, str],
+    candidate_env: dict[str, str],
+) -> dict[str, str]:
+    """Resolve candidate secrets first, with the active deployment as fallback."""
+    exchange = old_config.get("exchange", {})
+    api = old_config.get("api_server", {})
+    if not isinstance(exchange, dict) or not isinstance(api, dict):
+        raise RuntimeError("Existing configuration has invalid exchange/api sections")
+
+    def value(env_name: str, config_value: object = "", default: str = "") -> str:
+        return str(
+            candidate_env.get(env_name) or config_value or old_env.get(env_name) or default
+        )
+
+    return {
+        "exchange_key": required(
+            value("FREQTRADE__EXCHANGE__KEY", exchange.get("key")), "exchange.key"
+        ),
+        "exchange_secret": required(
+            value("FREQTRADE__EXCHANGE__SECRET", exchange.get("secret")), "exchange.secret"
+        ),
+        "exchange_password": required(
+            value("FREQTRADE__EXCHANGE__PASSWORD", exchange.get("password")), "exchange.password"
+        ),
+        "api_username": value(
+            "FREQTRADE__API_SERVER__USERNAME", api.get("username"), "freqtrader"
+        ),
+        "api_password": value(
+            "FREQTRADE__API_SERVER__PASSWORD", api.get("password"), secrets.token_urlsafe(32)
+        ),
+        "jwt_secret": value(
+            "FREQTRADE__API_SERVER__JWT_SECRET_KEY",
+            api.get("jwt_secret_key"),
+            secrets.token_urlsafe(48),
+        ),
+    }
+
+
 def main() -> None:
     if os.geteuid() != 0:
         raise RuntimeError("Run this installer as root")
@@ -66,32 +106,14 @@ def main() -> None:
     old_config_path = ROOT / "user_data/config.json"
     old_config = json.loads(old_config_path.read_text(encoding="utf-8"))
     old_env = read_env_file(ROOT / ".env")
-    exchange = old_config.get("exchange", {})
-    api = old_config.get("api_server", {})
-
-    exchange_key = required(
-        exchange.get("key") or old_env.get("FREQTRADE__EXCHANGE__KEY"), "exchange.key"
-    )
-    exchange_secret = required(
-        exchange.get("secret") or old_env.get("FREQTRADE__EXCHANGE__SECRET"), "exchange.secret"
-    )
-    exchange_password = required(
-        exchange.get("password") or old_env.get("FREQTRADE__EXCHANGE__PASSWORD"),
-        "exchange.password",
-    )
-    api_username = str(
-        api.get("username") or old_env.get("FREQTRADE__API_SERVER__USERNAME") or "freqtrader"
-    )
-    api_password = str(
-        api.get("password")
-        or old_env.get("FREQTRADE__API_SERVER__PASSWORD")
-        or secrets.token_urlsafe(32)
-    )
-    jwt_secret = str(
-        api.get("jwt_secret_key")
-        or old_env.get("FREQTRADE__API_SERVER__JWT_SECRET_KEY")
-        or secrets.token_urlsafe(48)
-    )
+    candidate_env = read_env_file(CANDIDATE / ".env")
+    credentials = resolve_credentials(old_config, old_env, candidate_env)
+    exchange_key = credentials["exchange_key"]
+    exchange_secret = credentials["exchange_secret"]
+    exchange_password = credentials["exchange_password"]
+    api_username = credentials["api_username"]
+    api_password = credentials["api_password"]
+    jwt_secret = credentials["jwt_secret"]
 
     database = ROOT / "user_data/tradesv3.sqlite"
     if database.exists():

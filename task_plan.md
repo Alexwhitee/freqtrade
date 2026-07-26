@@ -1,7 +1,7 @@
 # Task Plan: OKX Strategy Runtime Hardening
 
 ## Goal
-Harden and validate the OKX strategy changes, then commit every safe project change and push them to a reviewable remote branch.
+Harden, validate, version, and safely deploy the OKX strategy in dry-run mode on the CloudCone host using environment-only credentials.
 
 ## Phases
 
@@ -33,13 +33,34 @@ Create a `codex/` branch and commit all safe project changes in coherent units.
 **Status:** complete
 Push the branch to the configured remote and verify its upstream state.
 
+### Phase 8: Remote Preflight
+**Status:** complete
+Confirm zero open trades, current dry-run state, backup paths, container health, and the exact deployed file layout without exposing secrets.
+
+### Phase 9: Secret Configuration
+**Status:** complete
+Create the ignored local `.env` from the existing protected API-service secrets, replace only the supplied OKX credentials, and validate them before stopping the old deployment.
+
+### Phase 10: Current-Candidate Backtest
+**Status:** complete
+Run the current hardened V2 strategy against the available historical dataset and assess it against the documented profitability, drawdown, bias, robustness, and cost limitations.
+
+### Phase 11: Dry-Run Deployment
+**Status:** complete
+Upload the reviewed candidate, back up the old deployment, install it with all live approval gates disabled, and start both services.
+
+### Phase 12: Operational Verification
+**Status:** complete
+Verify container health, deployed hashes, API authentication, risk-guard freshness, dry-run state, and absence of startup errors.
+
 ## Decision Rules
 - Do not tune signal parameters or alter entry/exit rules.
 - Keep live and dry-run runtime checks fail closed.
 - Preserve the exact stake-sizing stop distance across candle transitions.
-- Do not deploy remotely or enable live trading as part of this task.
+- Remote deployment is authorized only with `dry_run=true`; do not enable live trading or validation approvals.
 - Never commit populated `.env` files, credentials, runtime databases, logs, caches, or backtest bulk artifacts.
 - Push a reviewable `codex/` branch instead of writing directly to upstream `develop`.
+- Never print, log, commit, or persist supplied credentials outside ignored/protected `.env` files.
 
 ## Errors Encountered
 | Error | Resolution |
@@ -63,3 +84,14 @@ Push the branch to the configured remote and verify its upstream state.
 | Installed `gh` rejected `--remote` when an explicit repository argument was supplied | Re-ran fork creation in current-repository inference mode; `Alexwhitee/freqtrade` was created successfully. |
 | Initial SSH push timed out after 124 seconds and the GitHub API confirmed no branch was created | Switched the fork remote to HTTPS and configured Git to use the existing authenticated `gh` credential flow. |
 | HTTPS push was rejected for missing OAuth `workflow` scope | Identified the real cause as the depth-1 local base (`d8fe5cf`) lagging the fork base (`e5fd2fec`); rebase the five local commits onto the fork's actual `develop` so existing workflows are not part of the update. |
+| PowerShell expanded the remote backup timestamp expression locally | The old candidate was still copied safely as `candidate-`; rename that verified directory to a fixed timestamped backup before deployment.
+| Inline OKX credential validator failed from nested PowerShell/SSH quoting before Python ran | Upload a temporary credential-free validator script, run it in the Freqtrade image with `--env-file`, then remove it. |
+| Supplied full-width-password value caused `UnicodeEncodeError` as an OKX API passphrase, and the old passphrase was not the ASCII punctuation variant | Treat the supplied password as the subaccount login password, preserve the previously validated API passphrase for the matching API key/secret, and re-run private authentication. |
+| Matching key/secret with the existing remote API passphrase returned OKX `AuthenticationError` | Test the normalized ASCII punctuation variant once; if it fails, stop before deployment and request the dedicated API passphrase. |
+| Attempted ASCII passphrase rewrite made no change | Confirmed the existing remote passphrase was already the normalized ASCII value; diagnose OKX error code and outbound IP instead of retrying credentials. |
+| OKX returned `50111 Invalid OK-ACCESS-KEY` in both live and sandbox validation | Keep the existing deployment running, remove candidate credential copies, and require a newly created valid API key/secret/API passphrase before deployment can continue. |
+| First candidate-secret cleanup command was expanded by local PowerShell before reaching SSH | Reissued cleanup with two explicit verified absolute file paths and no variables; both candidate secret files were removed. |
+| Session catch-up failed via `python` and then used the wrong `.codex` skill path | Re-ran successfully with `py -3` and the actual `.agents` skill path. |
+| Approval-flag patch expected unquoted values | Read the exact UTF-8 lines and reissued the patch with the existing quotes. |
+| Network-disabled backtest could not load OKX public market metadata | Re-run the read-only backtest with network access and temporary non-secret credentials; no private API or order command is used. |
+| One full local pytest run hit a transient Windows `WinError 5` during `os.replace` in a temp state file | The targeted test and immediate full rerun both passed; record as an environment-only flake and retain the passing rerun as the final result. |
