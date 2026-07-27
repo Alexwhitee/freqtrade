@@ -9,6 +9,11 @@ This deployment is deliberately configured for dry-run first. It trades only
 `BTC/USDT:USDT`, uses isolated margin, and delegates account-level drawdown
 enforcement to a separate persistent risk-guard service.
 
+`OkxCrossAssetBetaV3` is now present as an independent development candidate.
+It does not replace V2 and is not a live-release candidate. Its detailed
+universe, implementation, validation commands, and remaining gates are in
+[OKX_CROSS_ASSET_BETA_V3_CN.md](OKX_CROSS_ASSET_BETA_V3_CN.md).
+
 ## Safety defaults
 
 - `dry_run=true`, `dry_run_wallet=30`

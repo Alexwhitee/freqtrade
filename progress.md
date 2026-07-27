@@ -83,3 +83,48 @@
 - Uploaded the candidate and valid credentials, confirmed zero open trades, installed the new candidate in dry-run, and preserved a timestamped backup.
 - Operational verification passed: both services started, Freqtrade healthy, internal API HTTP 200, Risk Guard fresh with zero API failures, zero trades, all live gates false.
 - Removed the temporary candidate `.env` secret copy; active remote `.env` remains mode `600`.
+
+## 2026-07-27 Cross-Asset Beta V3
+- Accepted the detailed V3 implementation plan while preserving the active V2 dry-run.
+- Recovered the file-based plan and confirmed a clean working tree on
+  `codex/okx-strategy-hardening`.
+- Confirmed no existing exchange-calendar dependency is available locally;
+  selected a standard-library session gate with explicit holiday data.
+- Began Phase 13: V3 architecture, interfaces, independent runtime, and
+  backward-compatible Risk Guard design.
+- Confirmed the exact V2 extension points and the Risk Guard hard-coded BTC
+  lock; implementation will preserve V2 behavior and add backward-compatible
+  cross-asset state fields.
+- Added the first V3 implementation, reviewed market-calendar data, independent
+  dry-run config/Compose stack, and backward-compatible Risk Guard beta fields.
+- The initial test command found no `python` on PATH; loaded the bundled Codex
+  Python runtime for deterministic local validation.
+- Implemented V3 completed-daily Beta scoring, regime boundaries, 4h signals,
+  cross-sectional single-winner selection, US/KR entry sessions, asset-specific
+  stops/leverage, fixed Stage-1 stake sizing, and beta-state publication.
+- Added independent V3 Compose/config resources and made permanent Risk Guard
+  locking cover every configured and open market.
+- Added research data contracts, KRW-to-USD panel preparation, frozen release
+  gate evaluation, and Chinese operating/validation documentation.
+- Local validation currently passes 40 tests, Python compilation, JSON parsing,
+  Compose rendering, and `git diff --check`.
+- Isolated Freqtrade 2026.6 validation confirmed the V3 config schema, then
+  exposed a resolver/dataclass incompatibility with delayed annotations; the
+  annotation mode was removed before the required discovery rerun.
+- Public OKX downloads completed for all 15 execution/benchmark pairs at
+  15m/1h/4h/1d plus mark/funding data. The first backtest preflight found the
+  1500-candle exchange limit; V3 now uses the sufficient 1250-candle warm-up.
+- The next real backtest reached indicator calculation and exposed Pandas 3
+  timestamp-unit strictness; daily/base timestamps are now normalized to
+  nanosecond UTC before `merge_asof`.
+- The corrected real OKX execution backtest completed over 2026-04-22 through
+  2026-07-27 with zero trades, so all performance/sample gates remain unmet.
+- Recursive analysis passed at 1000/1125/1250 candles with no recursive
+  variance and no indicator-only lookahead bias.
+- Full Lookahead remains blocked by Freqtrade 2026.6 forcing a 10,000-unit
+  stake that exceeds META's OKX tier limit; production risk caps were retained.
+- Completed the five-axis code/security review and fixed all required findings.
+- Final local suite passes 42 tests, compilation, JSON, Compose, and diff
+  checks; isolated Freqtrade discovers V3 as OK and active V2 remains healthy.
+- Split the implementation into Risk Guard, V3 runtime, research tooling, and
+  documentation commits for reviewable history.

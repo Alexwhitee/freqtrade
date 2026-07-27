@@ -114,3 +114,65 @@
 - Freqtrade is `running|healthy`; Risk Guard is `running`; API read-only balance request returned HTTP 200.
 - Runtime remains `dry_run=true`, all three approval flags are false, total/open trades are both zero, and Risk Guard reports `api_failures=0`, `entries_blocked=false`, `simulation_mode=true`.
 - Startup log scan found no runtime error, traceback, exception, or failed startup message.
+
+## 2026-07-27 Cross-Asset V3 Baseline
+- The current OKX account and CCXT 4.5.61 expose active linear swaps for QQQ,
+  all Magnificent Seven names, BTC, ETH, MU, SNDK, SAMSUNG, SKHYNIX, and the
+  observation-only DRAM/LITE/SKHY instruments.
+- CCXT normalizes the contracts to Freqtrade symbols such as
+  `QQQ/USDT:USDT`, `NVDA/USDT:USDT`, and `SAMSUNG/USDT:USDT`.
+- OKX contract history is short: the first major stock/ETF contracts begin
+  2026-03-04, DRAM begins 2026-05-08, SAMSUNG/SKHYNIX begin 2026-06-10, and
+  SKHY begins 2026-07-10.
+- The repository and active Python environment do not include an exchange
+  calendar package. V3 will use a small standard-library session gate plus a
+  reviewed holiday data file, avoiding a new Freqtrade-wide dependency.
+- The existing Risk Guard contains a hard-coded BTC pair lock and must become
+  whitelist/open-trade driven before V3 can be considered safe.
+- V3 implementation is authorized for code and offline validation only. The
+  active V2 dry-run must remain untouched.
+- V2 exposes reusable fail-closed entry checks through `_confirm_trade_entry`,
+  exact stake-time stop persistence, and fill-safe initial-risk storage. V3 can
+  inherit these controls while overriding asset risk ceilings, sizing, ranking,
+  and session eligibility.
+- The current Risk Guard permanently locks only `BTC/USDT:USDT`. V3 needs a
+  robust union of configured whitelist pairs and currently open-trade pairs
+  before posting permanent locks.
+- The existing test harness stubs Freqtrade and TA-Lib modules, so V3 pure
+  scoring, calendar, classification, and ranking logic can be tested without a
+  Docker image or network connection.
+- V3 now shifts every daily feature to its next-day availability timestamp and
+  performs backward-only alignment with a 36-hour tolerance. Missing QQQ,
+  BTC, ETH, fewer than five Mag7 members, or fewer than two memory members
+  produces a blocked state.
+- V3 enforces its Stage-1 caps inside the strategy even if a shared Risk Guard
+  reports looser V2 stage limits: 0.75% planned risk, 5 USDT margin, 15 USDT
+  reserve, 2x equity/ETF leverage, and 3x crypto leverage.
+- Permanent Risk Guard locks now resolve the configured whitelist and snapshot
+  open-trade pairs before force-exit, eliminating the BTC-only assumption.
+- Underlying research is explicitly separated from OKX execution validation.
+  Korean research prices are converted using date-aligned KRW/USD data, and
+  missing/duplicate input dates fail validation.
+- Forty local deployment tests pass. Compose and all JSON files validate; the
+  V3 config is ignored by the repository's broad `config*.json` rule and must
+  be force-added after review, exactly as the reviewed V2 config was.
+- The 2026.6 Freqtrade container now discovers V1, V2, and V3 with `OK` status.
+- Public OKX execution data was downloaded in an isolated validation directory
+  for 15m/1h/4h/1d futures candles plus 1h mark/funding data. No private API or
+  order endpoint was used.
+- The completed 2026 execution backtest covered 2026-04-22 through 2026-07-27
+  after warm-up and produced zero trades. This is an explicit failed evidence
+  gate, not a profitability result; thresholds were not weakened to create
+  trades.
+- Recursive analysis at 1000/1125/1250 candles found no recursive variance and
+  its indicator-only lookahead check found no lookahead bias.
+- Freqtrade's full Lookahead command cannot complete for the entire stock-perp
+  universe because version 2026.6 unconditionally changes stake to 10,000,
+  which exceeds META's OKX leverage-tier maximum. The blocker is recorded and
+  must not be bypassed by changing production risk limits.
+- Final review found and fixed missing V3 daily-informative registration,
+  cross-sectional relative-strength ranking, live spread scoring, strict beta
+  state validation, and Pandas 3 timestamp-unit compatibility.
+- After isolated validation, the active V2 Freqtrade container remained
+  running/healthy and its Risk Guard remained running. No V3 service exists or
+  was started.

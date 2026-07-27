@@ -1,7 +1,8 @@
-# Task Plan: OKX Strategy Runtime Hardening
+# Task Plan: OKX Strategy Runtime Hardening and Cross-Asset Beta V3
 
 ## Goal
-Harden, validate, version, and safely deploy the OKX strategy in dry-run mode on the CloudCone host using environment-only credentials.
+Preserve the validated V2 dry-run while implementing, testing, and preparing an
+independent OKX cross-asset beta rotation V3 for dry-run validation only.
 
 ## Phases
 
@@ -53,11 +54,52 @@ Upload the reviewed candidate, back up the old deployment, install it with all l
 **Status:** complete
 Verify container health, deployed hashes, API authentication, risk-guard freshness, dry-run state, and absence of startup errors.
 
+### Phase 13: V3 Architecture and Contracts
+**Status:** complete
+Define the asset universe, beta-regime state, market-session policy, ranking
+contract, independent configuration, and V2-compatible Risk Guard changes.
+
+### Phase 14: Cross-Asset Strategy
+**Status:** complete
+Implement `OkxCrossAssetBetaV3` with beta scoring, pair classification,
+cross-sectional selection, session gates, pair-specific risk, and inherited
+fail-closed execution controls.
+
+### Phase 15: Independent Runtime
+**Status:** complete
+Add a V3-only config and compose profile with a separate container, port,
+database, logs, Risk Guard state, and dry-run wallet.
+
+### Phase 16: Dynamic Risk Guard
+**Status:** complete
+Remove hard-coded BTC locks/exits, operate on the configured whitelist and open
+trades, and publish V3 beta/selection fields without breaking V2.
+
+### Phase 17: V3 Tests and Research Tooling
+**Status:** complete
+Add focused unit tests, data-quality checks, OKX specification snapshots, and
+research/validation tooling without treating underlying-stock history as
+synthetic OKX execution history.
+
+### Phase 18: Validation and Review
+**Status:** complete
+Run the complete deployment suite, strategy discovery, config validation,
+static checks, code/security review, and document all unmet backtest/release
+gates. Do not deploy V3 or enable live trading.
+
 ## Decision Rules
 - Do not tune signal parameters or alter entry/exit rules.
 - Keep live and dry-run runtime checks fail closed.
 - Preserve the exact stake-sizing stop distance across candle transitions.
 - Remote deployment is authorized only with `dry_run=true`; do not enable live trading or validation approvals.
+- V3 must run independently from V2 and must not reuse V2 databases, ports,
+  logs, Risk Guard state, or release evidence.
+- V3 Stage 1 uses one open trade, 0.75% planned risk, a 5 USDT margin cap,
+  2x stock/ETF leverage, and 3x crypto leverage.
+- OKX contract data drives execution validation; underlying equity history is
+  research-only and must never be presented as OKX fill history.
+- Missing beta inputs, stale data, closed cash sessions, or incomplete
+  cross-sectional ranking block new entries without blocking exits.
 - Never commit populated `.env` files, credentials, runtime databases, logs, caches, or backtest bulk artifacts.
 - Push a reviewable `codex/` branch instead of writing directly to upstream `develop`.
 - Never print, log, commit, or persist supplied credentials outside ignored/protected `.env` files.
@@ -96,3 +138,13 @@ Verify container health, deployed hashes, API authentication, risk-guard freshne
 | Network-disabled backtest could not load OKX public market metadata | Re-run the read-only backtest with network access and temporary non-secret credentials; no private API or order command is used. |
 | One full local pytest run hit a transient Windows `WinError 5` during `os.replace` in a temp state file | The targeted test and immediate full rerun both passed; record as an environment-only flake and retain the passing rerun as the final result. |
 | Final remote Python one-liner was expanded by PowerShell quoting | Replaced it with fixed read-only `grep`/`test` checks; the dry-run flags and cleanup state were confirmed. |
+| Remote dependency probe was expanded by nested PowerShell/SSH quoting | Keep the confirmed local dependency result and use credential-free container validation after implementation. |
+| The first V3 compile/test command used unavailable `python` | Load the Codex workspace dependencies and use its explicit bundled Python executable. |
+| Bundled workspace Python lacked `requests`, so Risk Guard tests could not import | Use the repository's established `py -3` runtime, which has the deployment test dependencies. |
+| Legacy permanent-lock test had no whitelist after removing the hard-coded BTC pair | Make the test API expose its configured whitelist and add coverage for whitelist plus pre-force-exit open pairs. |
+| Docker Desktop is not running, so local image-based strategy discovery is unavailable | Keep local Compose validation and use an isolated validation directory on the existing CloudCone Docker host without changing active V2 services. |
+| First isolated Freqtrade discovery passed config schema but V3 dataclasses failed under the resolver's delayed-annotation module loading | Remove the unnecessary `from __future__ import annotations` from V3 and repeat discovery with a single strategy lookup path. |
+| First execution backtest was rejected because `startup_candle_count=1500` exceeds Freqtrade's OKX limit of 1499 | Use the already sufficient V2-proven 1250-candle warm-up and include 1000/1125/1250 in recursive analysis. |
+| Pandas 3/Freqtrade backtest rejected `merge_asof` between millisecond and microsecond UTC timestamps | Normalize both base and daily availability timestamps to explicit `datetime64[ns, UTC]` before backward alignment. |
+| Freqtrade 2026.6 full Lookahead forces `stake_amount=10000`, above META's OKX leverage-tier maximum | Record the upstream-tool incompatibility; rely on the completed indicator-only lookahead/recursive analysis and do not weaken V3 risk limits to accommodate the analyzer. |
+| `py -3 -m pyflakes` was unavailable in the established local Python | Retain compileall, 42 behavior tests, Freqtrade strategy discovery/backtest, diff checks, and manual five-axis review without adding a project dependency. |
