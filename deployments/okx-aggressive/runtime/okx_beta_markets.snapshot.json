@@ -1,0 +1,26 @@
+{
+  "captured_at": "2026-07-27T02:54:05.481324+00:00",
+  "ccxt_version": "4.5.61",
+  "exchange": "OKX",
+  "market_type": "swap",
+  "markets": [
+    {"symbol": "QQQ/USDT:USDT", "id": "QQQ-USDT-SWAP", "active": true, "visible": true, "swap": true, "linear": true, "contract_size": 1.0, "amount_min": 0.01, "amount_precision": 0.01, "price_precision": 0.01},
+    {"symbol": "SPY/USDT:USDT", "id": "SPY-USDT-SWAP", "active": true, "visible": true, "swap": true, "linear": true, "contract_size": 1.0, "amount_min": 0.01, "amount_precision": 0.01, "price_precision": 0.01},
+    {"symbol": "AAPL/USDT:USDT", "id": "AAPL-USDT-SWAP", "active": true, "visible": true, "swap": true, "linear": true, "contract_size": 1.0, "amount_min": 0.01, "amount_precision": 0.01, "price_precision": 0.01},
+    {"symbol": "AMZN/USDT:USDT", "id": "AMZN-USDT-SWAP", "active": true, "visible": true, "swap": true, "linear": true, "contract_size": 1.0, "amount_min": 0.01, "amount_precision": 0.01, "price_precision": 0.01},
+    {"symbol": "GOOGL/USDT:USDT", "id": "GOOGL-USDT-SWAP", "active": true, "visible": true, "swap": true, "linear": true, "contract_size": 1.0, "amount_min": 0.01, "amount_precision": 0.01, "price_precision": 0.01},
+    {"symbol": "META/USDT:USDT", "id": "META-USDT-SWAP", "active": true, "visible": true, "swap": true, "linear": true, "contract_size": 1.0, "amount_min": 0.01, "amount_precision": 0.01, "price_precision": 0.01},
+    {"symbol": "MSFT/USDT:USDT", "id": "MSFT-USDT-SWAP", "active": true, "visible": true, "swap": true, "linear": true, "contract_size": 1.0, "amount_min": 0.01, "amount_precision": 0.01, "price_precision": 0.01},
+    {"symbol": "NVDA/USDT:USDT", "id": "NVDA-USDT-SWAP", "active": true, "visible": true, "swap": true, "linear": true, "contract_size": 1.0, "amount_min": 0.01, "amount_precision": 0.01, "price_precision": 0.01},
+    {"symbol": "TSLA/USDT:USDT", "id": "TSLA-USDT-SWAP", "active": true, "visible": true, "swap": true, "linear": true, "contract_size": 1.0, "amount_min": 0.01, "amount_precision": 0.01, "price_precision": 0.01},
+    {"symbol": "MU/USDT:USDT", "id": "MU-USDT-SWAP", "active": true, "visible": true, "swap": true, "linear": true, "contract_size": 1.0, "amount_min": 0.01, "amount_precision": 0.01, "price_precision": 0.01},
+    {"symbol": "SNDK/USDT:USDT", "id": "SNDK-USDT-SWAP", "active": true, "visible": true, "swap": true, "linear": true, "contract_size": 1.0, "amount_min": 0.001, "amount_precision": 0.001, "price_precision": 0.01},
+    {"symbol": "SAMSUNG/USDT:USDT", "id": "SAMSUNG-USDT-SWAP", "active": true, "visible": true, "swap": true, "linear": true, "contract_size": 1.0, "amount_min": 0.01, "amount_precision": 0.01, "price_precision": 0.01},
+    {"symbol": "SKHYNIX/USDT:USDT", "id": "SKHYNIX-USDT-SWAP", "active": true, "visible": true, "swap": true, "linear": true, "contract_size": 1.0, "amount_min": 0.001, "amount_precision": 0.001, "price_precision": 0.01},
+    {"symbol": "BTC/USDT:USDT", "id": "BTC-USDT-SWAP", "active": true, "visible": true, "swap": true, "linear": true, "contract_size": 0.01, "amount_min": 0.01, "amount_precision": 0.01, "price_precision": 0.1},
+    {"symbol": "ETH/USDT:USDT", "id": "ETH-USDT-SWAP", "active": true, "visible": true, "swap": true, "linear": true, "contract_size": 0.1, "amount_min": 0.01, "amount_precision": 0.01, "price_precision": 0.01},
+    {"symbol": "DRAM/USDT:USDT", "id": "DRAM-USDT-SWAP", "active": true, "visible": true, "swap": true, "linear": true, "contract_size": 1.0, "amount_min": 0.1, "amount_precision": 0.1, "price_precision": 0.01},
+    {"symbol": "LITE/USDT:USDT", "id": "LITE-USDT-SWAP", "active": true, "visible": true, "swap": true, "linear": true, "contract_size": 1.0, "amount_min": 0.01, "amount_precision": 0.01, "price_precision": 0.01},
+    {"symbol": "SKHY/USDT:USDT", "id": "SKHY-USDT-SWAP", "active": true, "visible": true, "swap": true, "linear": true, "contract_size": 1.0, "amount_min": 0.01, "amount_precision": 0.01, "price_precision": 0.01}
+  ]
+}
