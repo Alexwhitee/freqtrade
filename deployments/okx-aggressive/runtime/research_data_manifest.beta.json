@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "execution_venue": "OKX",
+  "execution_history_note": "Only OKX perpetual candles may be used for fill, funding, basis, spread, and slippage validation.",
+  "research_history_note": "Underlying cash-market history validates signals only and must not be represented as OKX perpetual execution history.",
+  "required_columns": ["date", "open", "high", "low", "close", "volume"],
+  "usd_fx_columns": ["date", "krw_usd"],
+  "assets": [
+    {"symbol": "QQQ", "group": "benchmark", "currency": "USD", "tradable": true},
+    {"symbol": "SPY", "group": "benchmark", "currency": "USD", "tradable": false},
+    {"symbol": "AAPL", "group": "mag7", "currency": "USD", "tradable": true},
+    {"symbol": "AMZN", "group": "mag7", "currency": "USD", "tradable": true},
+    {"symbol": "GOOGL", "group": "mag7", "currency": "USD", "tradable": true},
+    {"symbol": "META", "group": "mag7", "currency": "USD", "tradable": true},
+    {"symbol": "MSFT", "group": "mag7", "currency": "USD", "tradable": true},
+    {"symbol": "NVDA", "group": "mag7", "currency": "USD", "tradable": true},
+    {"symbol": "TSLA", "group": "mag7", "currency": "USD", "tradable": true},
+    {"symbol": "MU", "group": "memory", "currency": "USD", "tradable": true},
+    {"symbol": "SNDK", "group": "memory", "currency": "USD", "tradable": true},
+    {"symbol": "SAMSUNG", "group": "memory", "currency": "KRW", "tradable": true},
+    {"symbol": "SKHYNIX", "group": "memory", "currency": "KRW", "tradable": true},
+    {"symbol": "BTC", "group": "crypto", "currency": "USD", "tradable": true},
+    {"symbol": "ETH", "group": "crypto", "currency": "USD", "tradable": true}
+  ],
+  "walk_forward": {
+    "research_start": "2018-01-01",
+    "initial_research_end": "2023-12-31",
+    "train_years": 3,
+    "test_years": 1,
+    "stability_start": "2024-01-01",
+    "stability_end": "2025-12-31",
+    "untouched_execution_start": "2026-01-01"
+  }
+}
