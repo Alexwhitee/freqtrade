@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import os
 import sys
 import time
@@ -53,6 +54,7 @@ class Settings:
     auto_promote: bool
     telegram_token: str
     telegram_chat_id: str
+    beta_state_path: Path | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -76,6 +78,11 @@ class Settings:
             auto_promote=env_bool("RISK_GUARD_AUTO_PROMOTE", True),
             telegram_token=os.getenv("RISK_GUARD_TELEGRAM_TOKEN", ""),
             telegram_chat_id=os.getenv("RISK_GUARD_TELEGRAM_CHAT_ID", ""),
+            beta_state_path=(
+                Path(os.environ["RISK_GUARD_BETA_STATE_PATH"])
+                if os.getenv("RISK_GUARD_BETA_STATE_PATH")
+                else None
+            ),
         )
 
 
@@ -118,7 +125,7 @@ class RiskGuard:
 
     def _default_state(self) -> dict[str, Any]:
         return {
-            "version": 1,
+            "version": 2,
             "updated_at": None,
             "high_water": None,
             "day_key": None,
@@ -141,6 +148,14 @@ class RiskGuard:
             "last_trigger_key": None,
             "equity": None,
             "drawdown": 0.0,
+            "beta_score": None,
+            "beta_regime": "blocked",
+            "selected_pair": None,
+            "selected_score": None,
+            "market_session": "unavailable",
+            "cross_asset_data_fresh": False,
+            "group_exposure": {},
+            "beta_entries_blocked": False,
             **self.STAGE_LIMITS[1],
         }
 
@@ -148,7 +163,9 @@ class RiskGuard:
         try:
             with self.settings.state_path.open(encoding="utf-8") as handle:
                 loaded = json.load(handle)
-            return {**self._default_state(), **loaded}
+            merged = {**self._default_state(), **loaded}
+            merged["version"] = 2
+            return merged
         except (OSError, ValueError, TypeError):
             return self._default_state()
 
@@ -227,6 +244,98 @@ class RiskGuard:
         except (requests.RequestException, ValueError, TypeError, KeyError):
             LOG.exception("Unable to cancel all open orders")
 
+    def _lock_pairs(self) -> list[str]:
+        """Return every configured or open pair without assuming a single market."""
+        pairs: set[str] = set()
+        try:
+            payload = self.api.get("whitelist")
+            if isinstance(payload, dict):
+                pairs.update(
+                    str(pair)
+                    for pair in payload.get("whitelist", [])
+                    if isinstance(pair, str) and pair
+                )
+        except (requests.RequestException, ValueError, TypeError, KeyError, AssertionError):
+            LOG.warning("Unable to read API whitelist; using runtime/open-trade pairs")
+        try:
+            runtime = self.api.get("show_config")
+            configured = runtime.get("pair_whitelist")
+            if configured is None and isinstance(runtime.get("exchange"), dict):
+                configured = runtime["exchange"].get("pair_whitelist")
+            pairs.update(
+                str(pair)
+                for pair in (configured or [])
+                if isinstance(pair, str) and pair
+            )
+        except (requests.RequestException, ValueError, TypeError, KeyError):
+            LOG.warning("Unable to read configured pair whitelist")
+        try:
+            status = self.api.get("status")
+            pairs.update(
+                str(trade["pair"])
+                for trade in status
+                if isinstance(trade, dict) and isinstance(trade.get("pair"), str)
+            )
+        except (requests.RequestException, ValueError, TypeError, KeyError):
+            LOG.warning("Unable to read open-trade pairs")
+        return sorted(pairs)
+
+    def _merge_beta_state(self, now: datetime) -> None:
+        allowed = {
+            "beta_score",
+            "beta_regime",
+            "selected_pair",
+            "selected_score",
+            "market_session",
+            "cross_asset_data_fresh",
+            "group_exposure",
+        }
+        path = self.settings.beta_state_path
+        if path is None:
+            return
+        try:
+            with path.open(encoding="utf-8") as handle:
+                payload = json.load(handle)
+            updated = parse_time(payload.get("updated_at"))
+            if (
+                updated is None
+                or updated > now + timedelta(seconds=5)
+                or now - updated > timedelta(seconds=90)
+            ):
+                raise ValueError("beta state is stale")
+            regime = str(payload.get("beta_regime", "blocked"))
+            if regime not in {
+                "strong_risk_on",
+                "risk_on",
+                "neutral",
+                "risk_off",
+                "blocked",
+            }:
+                raise ValueError("invalid beta regime")
+            score = payload.get("beta_score")
+            if score is not None and not math.isfinite(float(score)):
+                raise ValueError("invalid beta score")
+            if not isinstance(payload.get("group_exposure", {}), dict):
+                raise ValueError("invalid group exposure")
+            self.state.update({key: payload[key] for key in allowed if key in payload})
+            fresh = bool(payload.get("cross_asset_data_fresh", False))
+            self.state["beta_entries_blocked"] = not fresh or regime in {"blocked", "neutral"}
+            if not fresh:
+                self.state["beta_regime"] = "blocked"
+        except (OSError, ValueError, TypeError):
+            self.state.update(
+                {
+                    "beta_score": None,
+                    "beta_regime": "blocked",
+                    "selected_pair": None,
+                    "selected_score": None,
+                    "market_session": "unavailable",
+                    "cross_asset_data_fresh": False,
+                    "group_exposure": {},
+                    "beta_entries_blocked": True,
+                }
+            )
+
     def _stop_trading(self, reason: str, pause_until: datetime | None, permanent: bool) -> None:
         existing_pause = parse_time(self.state.get("pause_until"))
         if self.state.get("last_trigger") == reason and (
@@ -251,6 +360,9 @@ class RiskGuard:
                 "updated_at": iso(utcnow()),
             }
         )
+        # Resolve open-trade pairs before force-exit can remove them from
+        # status. Configured whitelist pairs are included by the same call.
+        permanent_pairs = self._lock_pairs() if permanent else []
         # Persist first so strategy entry callbacks fail closed before RPC actions begin.
         self._write_state()
         try:
@@ -270,20 +382,23 @@ class RiskGuard:
                 break
             time.sleep(1)
         if permanent:
-            try:
-                self.api.post(
-                    "locks",
-                    [
-                        {
-                            "pair": "BTC/USDT:USDT",
-                            "side": "*",
-                            "until": "2099-12-31T23:59:59Z",
-                            "reason": "risk_guard_50pct_drawdown",
-                        }
-                    ],
-                )
-            except requests.RequestException:
-                LOG.exception("Permanent pair-lock request failed")
+            if not permanent_pairs:
+                LOG.error("Permanent lock could not resolve any configured or open pair")
+            for pair in permanent_pairs:
+                try:
+                    self.api.post(
+                        "locks",
+                        [
+                            {
+                                "pair": pair,
+                                "side": "*",
+                                "until": "2099-12-31T23:59:59Z",
+                                "reason": "risk_guard_50pct_drawdown",
+                            }
+                        ],
+                    )
+                except requests.RequestException:
+                    LOG.exception("Permanent pair-lock request failed for %s", pair)
         self.send_alert(f"RISK GUARD: {reason}; trading stopped; permanent={permanent}")
 
     def _replay_startup_lock(self, now: datetime) -> None:
@@ -380,6 +495,7 @@ class RiskGuard:
 
     def tick(self) -> dict[str, Any]:
         now = utcnow()
+        self._merge_beta_state(now)
         runtime = self.api.get("show_config")
         dry_run = runtime.get("dry_run") is True
         self.state["simulation_mode"] = dry_run
@@ -437,6 +553,7 @@ class RiskGuard:
         self.state["entries_blocked"] = bool(
             self.state.get("validation_lock")
             or self.state.get("permanent_lock")
+            or self.state.get("beta_entries_blocked")
             or (self.state.get("paused_by_guard") and (pause_until is None or now < pause_until))
         )
         self._write_state()

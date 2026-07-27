@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -16,11 +18,22 @@ SPEC.loader.exec_module(risk_guard)
 
 
 class FakeApi:
-    def __init__(self, equity=30.0, losses=0, closed_count=0, profit_factor=0.0, dry_run=False):
+    def __init__(
+        self,
+        equity=30.0,
+        losses=0,
+        closed_count=0,
+        profit_factor=0.0,
+        dry_run=False,
+        whitelist=None,
+        open_pairs=None,
+    ):
         self.equity = equity
         self.closed_count = closed_count
         self.profit_factor = profit_factor
         self.dry_run = dry_run
+        self.whitelist = whitelist or ["BTC/USDT:USDT"]
+        self.open_pairs = open_pairs or []
         self.calls = []
         self.trades = [
             {
@@ -40,9 +53,14 @@ class FakeApi:
         if path == "trades":
             return {"trades": self.trades}
         if path == "status":
-            return []
+            return [{"pair": pair, "trade_id": index + 100} for index, pair in enumerate(self.open_pairs)]
         if path == "show_config":
-            return {"dry_run": self.dry_run}
+            return {
+                "dry_run": self.dry_run,
+                "exchange": {"pair_whitelist": self.whitelist},
+            }
+        if path == "whitelist":
+            return {"whitelist": self.whitelist}
         raise AssertionError(path)
 
     def post(self, path, payload=None):
@@ -149,6 +167,26 @@ class RiskGuardTests(unittest.TestCase):
         self.assertTrue(state["entries_blocked"])
         self.assertTrue(any(call[1] == "locks" for call in api.calls))
 
+    def test_permanent_lock_covers_whitelist_and_open_trade_pairs(self):
+        api = FakeApi(
+            equity=30,
+            whitelist=["QQQ/USDT:USDT", "BTC/USDT:USDT"],
+            open_pairs=["ETH/USDT:USDT"],
+        )
+        guard = risk_guard.RiskGuard(settings(self.tmp_path), api)
+        guard.tick()
+        api.equity = 15
+        guard.tick()
+        locked = {
+            call[2][0]["pair"]
+            for call in api.calls
+            if call[0] == "POST" and call[1] == "locks"
+        }
+        self.assertEqual(
+            locked,
+            {"QQQ/USDT:USDT", "BTC/USDT:USDT", "ETH/USDT:USDT"},
+        )
+
     def test_recovery_mode_caps_risk_until_drawdown_below_twenty_percent(self):
         api = FakeApi(equity=30)
         guard = risk_guard.RiskGuard(settings(self.tmp_path), api)
@@ -158,6 +196,50 @@ class RiskGuardTests(unittest.TestCase):
         self.assertTrue(state["recovery_mode"])
         self.assertEqual(state["risk_cap"], 0.01)
         self.assertEqual(state["leverage_cap"], 3.0)
+
+    def test_beta_state_is_merged_and_stale_state_fails_closed(self):
+        beta_path = self.tmp_path / "beta.json"
+        beta_path.write_text(
+            json.dumps(
+                {
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "beta_score": 72.0,
+                    "beta_regime": "strong_risk_on",
+                    "selected_pair": "QQQ/USDT:USDT",
+                    "selected_score": 88.0,
+                    "market_session": {"us": "us_open"},
+                    "cross_asset_data_fresh": True,
+                    "group_exposure": {"benchmark": 75.0},
+                }
+            ),
+            encoding="utf-8",
+        )
+        base = settings(self.tmp_path)
+        configured = risk_guard.Settings(
+            **{**base.__dict__, "beta_state_path": beta_path}
+        )
+        guard = risk_guard.RiskGuard(configured, FakeApi(dry_run=True))
+        state = guard.tick()
+        self.assertEqual(state["beta_score"], 72.0)
+        self.assertEqual(state["selected_pair"], "QQQ/USDT:USDT")
+        self.assertTrue(state["cross_asset_data_fresh"])
+
+        beta_path.write_text(
+            json.dumps(
+                {
+                    "updated_at": "2020-01-01T00:00:00+00:00",
+                    "beta_score": 99.0,
+                    "beta_regime": "strong_risk_on",
+                    "cross_asset_data_fresh": True,
+                }
+            ),
+            encoding="utf-8",
+        )
+        state = guard.tick()
+        self.assertEqual(state["beta_regime"], "blocked")
+        self.assertFalse(state["cross_asset_data_fresh"])
+        self.assertTrue(state["beta_entries_blocked"])
+        self.assertTrue(state["entries_blocked"])
 
 
 if __name__ == "__main__":
