@@ -14,8 +14,9 @@ enforcement to a separate persistent risk-guard service.
 Historical V3-V6 runtime entrypoints and documentation are under
 [`archive/v1-v6/`](archive/v1-v6/README_CN.md). Their strategy modules remain
 in `runtime/strategies` because V7 imports the complete V1-V6 inheritance
-chain. V7 remains an offline-only candidate with unresolved release blockers;
-it does not replace the active V2 deployment.
+chain. V7's identified engineering blockers are fixed and it may run as an
+isolated dry-run candidate. It has not completed a new untouched forward
+dry-run period and is not approved for unattended live deployment.
 
 ## Safety defaults
 
@@ -27,6 +28,11 @@ it does not replace the active V2 deployment.
   `RISK_GUARD_VALIDATION_APPROVED=false` and `RISK_GUARD_LIVE_APPROVED=false`
 - S+ / 10x trading cannot unlock until `RISK_GUARD_SPLUS_APPROVED=true`
 - a missing or stale risk-state file blocks all new entries
+
+V7 adds a persistent pending-risk ledger, audited OKX contract metadata, and
+four independent live-entry gates. Its Compose defaults keep every gate closed.
+See [V7_LIVE_ACTIVATION_CN.md](V7_LIVE_ACTIVATION_CN.md) for the read-only
+preflight, manual activation, emergency stop, and rollback procedure.
 
 ## Setup
 

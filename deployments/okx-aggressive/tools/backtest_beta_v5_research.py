@@ -1679,6 +1679,42 @@ def run_suite(panel: pd.DataFrame, params: ResearchParameters) -> dict[str, Any]
         multiplier: compact(run(cost_multiplier=float(multiplier)))
         for multiplier in (1.0, 1.5, 2.0)
     }
+    v7_cost_stress = {
+        multiplier: compact(
+            run(
+                max_slots=3,
+                side_set="long_only",
+                include_memory=False,
+                portfolio_risk_scale=0.5,
+                portfolio_profile="v6",
+                aggregate_risk_cap=0.0075,
+                initial_balance=80.0,
+                cost_multiplier=float(multiplier),
+            )
+        )
+        for multiplier in (1.0, 1.5, 2.0)
+    }
+    v7_validation_cost_stress = {
+        multiplier: compact(
+            simulate(
+                panel,
+                params,
+                SimulationOptions(
+                    start="2024-01-01",
+                    end="2025-12-31",
+                    max_slots=3,
+                    side_set="long_only",
+                    include_memory=False,
+                    portfolio_risk_scale=0.5,
+                    portfolio_profile="v6",
+                    aggregate_risk_cap=0.0075,
+                    initial_balance=80.0,
+                    cost_multiplier=float(multiplier),
+                ),
+            )
+        )
+        for multiplier in (1.0, 1.5, 2.0)
+    }
     perturbations = {}
     for label, absolute, long_adx_value, short_adx_value in (
         ("minus_10pct", 0.225, 18.0, 22.5),
@@ -1719,6 +1755,8 @@ def run_suite(panel: pd.DataFrame, params: ResearchParameters) -> dict[str, Any]
         "validation_diagnostics": validation_diagnostics,
         "ablations": ablations,
         "cost_stress": cost_stress,
+        "v7_cost_stress": v7_cost_stress,
+        "v7_validation_cost_stress": v7_validation_cost_stress,
         "parameter_perturbations": perturbations,
     }
 

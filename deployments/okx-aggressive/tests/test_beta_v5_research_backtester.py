@@ -88,6 +88,66 @@ def _candidate(model: str = "trend_long") -> dict:
 
 
 class ResearchBacktesterContractTests(unittest.TestCase):
+    def test_v7_cost_stress_covers_research_and_validation_periods(self):
+        calls = []
+
+        def fake_simulate(_panel, _params, options):
+            calls.append(options)
+            return {
+                "options": {},
+                "parameters": {},
+                "summary": {},
+                "monte_carlo": {},
+            }
+
+        base_params = research.ResearchParameters()
+        cached_panels = {
+            research.ResearchParameters(
+                absolute_threshold=0.225,
+                long_adx=18.0,
+                short_adx=22.5,
+            ): pd.DataFrame(),
+            base_params: pd.DataFrame(),
+            research.ResearchParameters(
+                absolute_threshold=0.275,
+                long_adx=22.0,
+                short_adx=27.5,
+            ): pd.DataFrame(),
+        }
+        with patch.object(research, "simulate", side_effect=fake_simulate):
+            with patch.object(research, "build_panel_data_cache", cached_panels):
+                report = research.run_suite(pd.DataFrame(), base_params)
+
+        self.assertEqual(set(report["v7_cost_stress"]), {1.0, 1.5, 2.0})
+        self.assertEqual(
+            set(report["v7_validation_cost_stress"]),
+            {1.0, 1.5, 2.0},
+        )
+        v7_calls = [
+            options
+            for options in calls
+            if options.initial_balance == 80.0
+            and options.aggregate_risk_cap == 0.0075
+            and options.portfolio_risk_scale == 0.5
+        ]
+        self.assertEqual(
+            {options.cost_multiplier for options in v7_calls},
+            {1.0, 1.5, 2.0},
+        )
+        observed = {
+            (options.start, options.end, options.cost_multiplier)
+            for options in v7_calls
+        }
+        expected = {
+            (start, end, multiplier)
+            for start, end in (
+                ("2018-01-01", "2023-12-31"),
+                ("2024-01-01", "2025-12-31"),
+            )
+            for multiplier in (1.0, 1.5, 2.0)
+        }
+        self.assertTrue(expected.issubset(observed))
+
     def test_signal_executes_at_next_session_open(self):
         panel = _simulation_panel()
 
