@@ -509,12 +509,13 @@ class OkxCrossAssetBetaV3(OkxAggressiveTrendV2):
         return dataframe
 
     def populate_entry_trend(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
+        regime = dataframe["beta_regime"].astype(str)
         long_signal = (
             (dataframe["close_4h"] > dataframe["channel_high_30_4h"])
             & (dataframe["ema30_4h"] > dataframe["ema60_4h"])
             & (dataframe["adx_4h"] >= 20)
             & (dataframe["volume_4h"] >= dataframe["volume_median_30_4h"])
-            & (dataframe["beta_score"] >= 55)
+            & regime.isin(("risk_on", "strong_risk_on"))
             & dataframe["cross_asset_data_fresh"].fillna(False)
             & (dataframe["volume"] > 0)
         )
@@ -523,8 +524,7 @@ class OkxCrossAssetBetaV3(OkxAggressiveTrendV2):
             & (dataframe["ema30_4h"] < dataframe["ema60_4h"])
             & (dataframe["adx_4h"] >= 25)
             & (dataframe["volume_4h"] >= dataframe["volume_median_30_4h"])
-            & (dataframe["beta_score"] >= 25)
-            & (dataframe["beta_score"] <= 40)
+            & (regime == "risk_off")
             & dataframe["cross_asset_data_fresh"].fillna(False)
             & (dataframe["volume"] > 0)
         )
@@ -533,22 +533,23 @@ class OkxCrossAssetBetaV3(OkxAggressiveTrendV2):
         return dataframe
 
     def populate_exit_trend(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
-        dataframe.loc[
+        long_channel_exit = (
             (
                 (dataframe["close_4h"] < dataframe["channel_low_15_4h"])
                 | (dataframe["ema30_4h"] < dataframe["ema60_4h"])
             )
-            & (dataframe["volume"] > 0),
-            ["exit_long", "exit_tag"],
-        ] = (1, "long_channel_exit")
-        dataframe.loc[
+            & (dataframe["volume"] > 0)
+        )
+        short_channel_exit = (
             (
                 (dataframe["close_4h"] > dataframe["channel_high_40_4h"])
                 | (dataframe["ema30_4h"] > dataframe["ema60_4h"])
             )
-            & (dataframe["volume"] > 0),
-            ["exit_short", "exit_tag"],
-        ] = (1, "short_channel_exit")
+            & (dataframe["volume"] > 0)
+        )
+        dataframe.loc[long_channel_exit, "exit_long"] = 1
+        dataframe.loc[short_channel_exit, "exit_short"] = 1
+        dataframe.loc[long_channel_exit | short_channel_exit, "exit_tag"] = "channel_exit"
         return dataframe
 
     def _price_stop_distance(self, candle: Series | None, rate: float) -> float:
@@ -598,6 +599,28 @@ class OkxCrossAssetBetaV3(OkxAggressiveTrendV2):
             "risk_off": 0.50,
         }.get(regime, 0.0)
 
+    def _account_equity(self) -> float:
+        """Return raw account equity before Freqtrade's tradable-ratio ceiling."""
+        config = getattr(self, "config", {}) or {}
+        stake_currency = str(config.get("stake_currency", "USDT"))
+        try:
+            equity = float(self.wallets.get_total(stake_currency))
+        except (AttributeError, TypeError, ValueError):
+            equity = 0.0
+        if np.isfinite(equity) and equity > 0:
+            return equity
+
+        try:
+            tradable_equity = float(self.wallets.get_total_stake_amount())
+        except (AttributeError, TypeError, ValueError):
+            return 0.0
+        if not np.isfinite(tradable_equity) or tradable_equity <= 0:
+            return 0.0
+        if "available_capital" in config:
+            return tradable_equity
+        ratio = self._safe_float(config.get("tradable_balance_ratio"), 1.0)
+        return tradable_equity / ratio if 0 < ratio <= 1 else tradable_equity
+
     def _custom_stake_amount(
         self,
         pair: str,
@@ -625,9 +648,8 @@ class OkxCrossAssetBetaV3(OkxAggressiveTrendV2):
             return 0.0
         if side == "short" and regime != "risk_off":
             return 0.0
-        try:
-            equity = float(self.wallets.get_total_stake_amount())
-        except Exception:
+        equity = self._account_equity()
+        if equity <= 0:
             return 0.0
         risk_fraction = min(
             self._ACCOUNT_RISK * multiplier,

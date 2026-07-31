@@ -241,6 +241,64 @@ class RiskGuardTests(unittest.TestCase):
         self.assertTrue(state["beta_entries_blocked"])
         self.assertTrue(state["entries_blocked"])
 
+    def test_v4_direction_protocol_allows_fresh_neutral_residual_selection(self):
+        beta_path = self.tmp_path / "beta-v4.json"
+        beta_path.write_text(
+            json.dumps(
+                {
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "beta_direction_score": 0.05,
+                    "beta_regime": "neutral",
+                    "risk_quality": 0.75,
+                    "selected_pair": "NVDA/USDT:USDT",
+                    "selected_side": "short",
+                    "selected_model": "residual_short",
+                    "selected_score": 84.0,
+                    "residual_score": -0.72,
+                    "exit_policy": "channel_only",
+                    "market_session": {"us": "us_open"},
+                    "cross_asset_data_fresh": True,
+                    "group_exposure": {"mag7": 0},
+                }
+            ),
+            encoding="utf-8",
+        )
+        base = settings(self.tmp_path)
+        configured = risk_guard.Settings(
+            **{**base.__dict__, "beta_state_path": beta_path}
+        )
+        guard = risk_guard.RiskGuard(configured, FakeApi(dry_run=True))
+        state = guard.tick()
+        self.assertEqual(state["beta_direction_score"], 0.05)
+        self.assertEqual(state["selected_model"], "residual_short")
+        self.assertEqual(state["risk_quality"], 0.75)
+        self.assertFalse(state["beta_entries_blocked"])
+
+    def test_v4_direction_protocol_rejects_out_of_range_values(self):
+        beta_path = self.tmp_path / "beta-v4-invalid.json"
+        beta_path.write_text(
+            json.dumps(
+                {
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "beta_direction_score": 1.01,
+                    "beta_regime": "strong_risk_on",
+                    "risk_quality": 1.0,
+                    "cross_asset_data_fresh": True,
+                    "group_exposure": {},
+                }
+            ),
+            encoding="utf-8",
+        )
+        base = settings(self.tmp_path)
+        configured = risk_guard.Settings(
+            **{**base.__dict__, "beta_state_path": beta_path}
+        )
+        state = risk_guard.RiskGuard(
+            configured, FakeApi(dry_run=True)
+        ).tick()
+        self.assertEqual(state["beta_regime"], "blocked")
+        self.assertTrue(state["beta_entries_blocked"])
+
 
 if __name__ == "__main__":
     unittest.main()

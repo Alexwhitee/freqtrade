@@ -149,9 +149,15 @@ class RiskGuard:
             "equity": None,
             "drawdown": 0.0,
             "beta_score": None,
+            "beta_direction_score": None,
             "beta_regime": "blocked",
+            "risk_quality": 0.0,
             "selected_pair": None,
+            "selected_side": None,
+            "selected_model": None,
             "selected_score": None,
+            "residual_score": None,
+            "exit_policy": None,
             "market_session": "unavailable",
             "cross_asset_data_fresh": False,
             "group_exposure": {},
@@ -283,9 +289,15 @@ class RiskGuard:
     def _merge_beta_state(self, now: datetime) -> None:
         allowed = {
             "beta_score",
+            "beta_direction_score",
             "beta_regime",
+            "risk_quality",
             "selected_pair",
+            "selected_side",
+            "selected_model",
             "selected_score",
+            "residual_score",
+            "exit_policy",
             "market_session",
             "cross_asset_data_fresh",
             "group_exposure",
@@ -309,26 +321,49 @@ class RiskGuard:
                 "risk_on",
                 "neutral",
                 "risk_off",
+                "strong_risk_off",
                 "blocked",
             }:
                 raise ValueError("invalid beta regime")
             score = payload.get("beta_score")
             if score is not None and not math.isfinite(float(score)):
                 raise ValueError("invalid beta score")
+            direction_score = payload.get("beta_direction_score")
+            if direction_score is not None and (
+                not math.isfinite(float(direction_score))
+                or not -1.0 <= float(direction_score) <= 1.0
+            ):
+                raise ValueError("invalid beta direction score")
+            if score is None and direction_score is None:
+                raise ValueError("missing beta score protocol")
+            risk_quality = payload.get("risk_quality")
+            if risk_quality is not None and (
+                not math.isfinite(float(risk_quality))
+                or not 0.0 <= float(risk_quality) <= 1.0
+            ):
+                raise ValueError("invalid beta risk quality")
             if not isinstance(payload.get("group_exposure", {}), dict):
                 raise ValueError("invalid group exposure")
             self.state.update({key: payload[key] for key in allowed if key in payload})
             fresh = bool(payload.get("cross_asset_data_fresh", False))
-            self.state["beta_entries_blocked"] = not fresh or regime in {"blocked", "neutral"}
+            is_v4 = direction_score is not None
+            blocked_regimes = {"blocked"} if is_v4 else {"blocked", "neutral"}
+            self.state["beta_entries_blocked"] = not fresh or regime in blocked_regimes
             if not fresh:
                 self.state["beta_regime"] = "blocked"
         except (OSError, ValueError, TypeError):
             self.state.update(
                 {
                     "beta_score": None,
+                    "beta_direction_score": None,
                     "beta_regime": "blocked",
+                    "risk_quality": 0.0,
                     "selected_pair": None,
+                    "selected_side": None,
+                    "selected_model": None,
                     "selected_score": None,
+                    "residual_score": None,
+                    "exit_policy": None,
                     "market_session": "unavailable",
                     "cross_asset_data_fresh": False,
                     "group_exposure": {},
