@@ -68,9 +68,14 @@ docker run --rm --user 0:0 --entrypoint python \
   --require-live --check-okx
 ```
 
-只有输出为 `"ok": true` 时，账户所有者才可启动：
+只有输出为 `"ok": true` 时，账户所有者才可停止旧 V2 并启动 V7。停止 V2 只删除
+旧容器和网络，不删除 `/root/freqtrade/user_data`、数据库或已有备份：
 
 ```bash
+cd /root/freqtrade
+docker compose down
+
+cd /root/freqtrade-v7
 docker compose -p freqtrade-v7 -f docker-compose.beta-v7.yml up -d
 docker compose -p freqtrade-v7 -f docker-compose.beta-v7.yml ps
 docker compose -p freqtrade-v7 -f docker-compose.beta-v7.yml logs --tail 200
@@ -109,3 +114,12 @@ docker compose -p freqtrade-v7 -f docker-compose.beta-v7.yml up -d
 
 数据库主文件不要直接删除；若需要全新 dry-run 数据库，应先把主文件移动到带时间戳的
 备份目录，再启动。风险账本损坏或状态不明时不要手工伪造，保持服务停止并检查日志。
+需要改为恢复旧 V2 dry-run 时，先停止 V7 dry-run，再启动 V2：
+
+```bash
+cd /root/freqtrade-v7
+docker compose -p freqtrade-v7 -f docker-compose.beta-v7.yml down
+
+cd /root/freqtrade
+docker compose up -d
+```
