@@ -1,18 +1,21 @@
 # OKX Aggressive Trend deployment
 
-The complete Chinese strategy specification, including executable signals,
-position sizing, drawdown controls, validation evidence, known limitations,
-and live-release gates, is available in
+The server currently runs `OkxAggressiveTrendV2` in dry-run. The complete
+Chinese V1-V7 inventory, version history, risk comparison, evidence, and
+archive map is available in
+[STRATEGIES_V1_TO_V7_CN.md](STRATEGIES_V1_TO_V7_CN.md). The detailed V2
+specification remains in
 [OKX_AGGRESSIVE_TREND_V2_STRATEGY_CN.md](OKX_AGGRESSIVE_TREND_V2_STRATEGY_CN.md).
 
 This deployment is deliberately configured for dry-run first. It trades only
 `BTC/USDT:USDT`, uses isolated margin, and delegates account-level drawdown
 enforcement to a separate persistent risk-guard service.
 
-`OkxCrossAssetBetaV3` is now present as an independent development candidate.
-It does not replace V2 and is not a live-release candidate. Its detailed
-universe, implementation, validation commands, and remaining gates are in
-[OKX_CROSS_ASSET_BETA_V3_CN.md](OKX_CROSS_ASSET_BETA_V3_CN.md).
+Historical V3-V6 runtime entrypoints and documentation are under
+[`archive/v1-v6/`](archive/v1-v6/README_CN.md). Their strategy modules remain
+in `runtime/strategies` because V7 imports the complete V1-V6 inheritance
+chain. V7 remains an offline-only candidate with unresolved release blockers;
+it does not replace the active V2 deployment.
 
 ## Safety defaults
 

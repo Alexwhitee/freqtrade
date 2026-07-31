@@ -1,0 +1,53 @@
+services:
+  freqtrade-beta-v4:
+    image: freqtradeorg/freqtrade:stable
+    restart: unless-stopped
+    container_name: freqtrade-beta-v4
+    env_file:
+      - .env
+    environment:
+      RISK_GUARD_STATE_PATH: /freqtrade/user_data/risk_guard/beta-v4-state.json
+      BETA_REGIME_STATE_PATH: /freqtrade/user_data/risk_guard/beta-v4-regime.json
+      BETA_MARKET_CALENDAR_PATH: /freqtrade/user_data/market_calendars.beta.json
+      BETA_V4_EXIT_POLICY: channel_only
+      RISK_GUARD_VALIDATION_APPROVED: "false"
+      RISK_GUARD_LIVE_APPROVED: "false"
+      RISK_GUARD_SPLUS_APPROVED: "false"
+    volumes:
+      - "./runtime:/freqtrade/user_data"
+    ports:
+      - "127.0.0.1:8083:8080"
+    command: >
+      trade
+      --logfile /freqtrade/user_data/logs/freqtrade-beta-v4.log
+      --db-url sqlite:////freqtrade/user_data/trades-beta-v4.sqlite
+      --config /freqtrade/user_data/config.beta-v4.json
+      --strategy OkxCrossAssetBetaV4
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/v1/ping', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+
+  risk-guard-beta-v4:
+    image: freqtradeorg/freqtrade:stable
+    restart: unless-stopped
+    container_name: freqtrade-risk-guard-beta-v4
+    env_file:
+      - .env
+    environment:
+      RISK_GUARD_API_URL: http://freqtrade-beta-v4:8080/api/v1
+      RISK_GUARD_STATE_PATH: /freqtrade/user_data/risk_guard/beta-v4-state.json
+      RISK_GUARD_BETA_STATE_PATH: /freqtrade/user_data/risk_guard/beta-v4-regime.json
+      RISK_GUARD_AUTO_PROMOTE: "false"
+      RISK_GUARD_VALIDATION_APPROVED: "false"
+      RISK_GUARD_LIVE_APPROVED: "false"
+      RISK_GUARD_SPLUS_APPROVED: "false"
+    depends_on:
+      freqtrade-beta-v4:
+        condition: service_healthy
+    volumes:
+      - "./runtime:/freqtrade/user_data"
+    entrypoint: ["python"]
+    command: ["/freqtrade/user_data/risk_guard.py"]
