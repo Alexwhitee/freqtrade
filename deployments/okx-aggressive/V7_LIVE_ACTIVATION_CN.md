@@ -17,6 +17,9 @@
 - OKX API Key 绑定服务器 IP，账户已设置账户级止损/告警，并准备好手机端人工平仓。
 - 市场快照不超过七天，当前 OKX 合约的 `amount_min` 和 `contractSize` 与快照一致。
 
+若部署文件由 root 解压，首次启动前执行 `chown -R 1000:1000 runtime`，否则容器
+用户无法写日志、SQLite 和风险状态文件。
+
 在服务器的 V7 目录执行 dry-run 预检：
 
 ```bash

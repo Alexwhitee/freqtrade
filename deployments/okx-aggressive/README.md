@@ -1,6 +1,7 @@
 # OKX Aggressive Trend deployment
 
-The server currently runs `OkxAggressiveTrendV2` in dry-run. The complete
+The server currently runs `OkxAggressiveTrendV2` and an isolated
+`OkxCrossAssetBetaV7` candidate in dry-run. The complete
 Chinese V1-V7 inventory, version history, risk comparison, evidence, and
 archive map is available in
 [STRATEGIES_V1_TO_V7_CN.md](STRATEGIES_V1_TO_V7_CN.md). The detailed V2
@@ -40,6 +41,8 @@ preflight, manual activation, emergency stop, and rollback procedure.
    file permissions to `600`.
 2. Create runtime directories: `runtime/logs`, `runtime/data`,
    `runtime/backtest_results`, and `runtime/risk_guard`.
+   When deploying as root, set the runtime tree owner to the container user:
+   `chown -R 1000:1000 runtime`.
 3. Start with `docker compose up -d`.
 4. Inspect `docker compose logs -f freqtrade risk-guard` and access FreqUI
    through an SSH tunnel to local port 8081.

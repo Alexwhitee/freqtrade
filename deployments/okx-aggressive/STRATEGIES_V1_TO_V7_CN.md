@@ -2,14 +2,15 @@
 
 > 盘点日期：2026-07-31
 > 代码范围：`deployments/okx-aggressive/`
-> 重要结论：V7 的已知工程阻塞已修复，可作为独立 dry-run 候选运行；尚无新的
-> 未触碰前向样本，因此不等于获得实盘批准。
+> 重要结论：服务器并行运行 V2 与独立 V7 dry-run；V7 的已知工程阻塞已修复，
+> 但尚无新的未触碰前向样本，因此不等于获得实盘批准。
 
 ## 1. 当前状态
 
-2026-07-31 对 CloudCone 服务器进行了只读核验：`freqtrade` 与
-`freqtrade-risk-guard` 容器均处于运行状态，Freqtrade 启动参数明确指定
-`OkxAggressiveTrendV2` 和 `config.json`。服务器没有运行 V3-V7。
+2026-07-31 对 CloudCone 完成部署核验：原 `/root/freqtrade` 中的 `freqtrade`
+与 `freqtrade-risk-guard` 继续运行 V2 dry-run；新增 `/root/freqtrade-v7` 中的
+`freqtrade-beta-v7` 与 `freqtrade-risk-guard-beta-v7`，V7 API 仅绑定
+`127.0.0.1:8086`。两套服务均健康，V7 预检为零仓位、零挂单、四个批准门关闭。
 
 | 版本 | 策略类 | 角色 | 当前状态 |
 |---|---|---|---|
@@ -19,7 +20,7 @@
 | V4 | `OkxCrossAssetBetaV4` | 多周期方向、残差与退出实验 | 已归档启动栈，离线历史版本 |
 | V5 | `OkxCrossAssetBetaV5` | 增加趋势回调续涨/续跌模型 | 已归档启动栈，离线历史版本 |
 | V6 | `OkxCrossAssetBetaV6` | 三仓、等总风险、只做多组合 | 已归档启动栈，离线历史版本 |
-| V7 | `OkxCrossAssetBetaV7` | 80 USDT 资金可行性与风险再分配 | 工程加固完成，待独立 dry-run 验证 |
+| V7 | `OkxCrossAssetBetaV7` | 80 USDT 资金可行性与风险再分配 | 服务器独立 dry-run，收集前向样本 |
 
 这里的“已归档”只表示不再保留独立启动入口，不代表源码可删除。V7 的继承链为：
 
@@ -338,11 +339,12 @@ dry-run 样本。
 - 基类：`runtime/strategies/OkxAggressiveTrendV1.py`
 - 详细说明：`OKX_AGGRESSIVE_TREND_V2_STRATEGY_CN.md`
 
-对服务器的任何切换、停止、重启或配置替换都应作为独立部署任务处理。本次整理
-只修改工作区文件，没有改变远端容器或交易状态。
+V2 仍位于 `/root/freqtrade`，部署 V7 时未停止、删除或覆盖 V2。后续切换、停止、
+重启或配置替换仍应作为独立部署任务处理。
 
 ### V7 dry-run 候选
 
+- 服务器目录：`/root/freqtrade-v7`
 - Compose：`docker-compose.beta-v7.yml`
 - 配置：`runtime/config.beta-v7.json`
 - 策略：`runtime/strategies/OkxCrossAssetBetaV7.py`
@@ -361,9 +363,8 @@ V3-V6 的 Compose、配置、专题说明和冻结材料统一位于 `archive/v1
 
 ## 13. 最终发布判断
 
-- V2：保持服务器 dry-run，继续收集独立样本；当前不等于实盘批准。
+- V2：服务器继续 dry-run；当前不等于实盘批准。
 - V3-V6：独立启动栈已归档，不应恢复运行。
-- V7：工程加固已完成，可独立运行 dry-run；尚无新的未触碰前向样本，未获得
-  自动实盘批准。
+- V7：服务器独立 dry-run 已启动；尚无新的未触碰前向样本，未获得自动实盘批准。
 - 下一步是收集并审查 V7 前向 dry-run 样本，保持四个批准门关闭；若账户所有者
   决定承担实盘风险，必须逐项执行 `V7_LIVE_ACTIVATION_CN.md`。

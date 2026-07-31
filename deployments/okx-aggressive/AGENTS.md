@@ -7,10 +7,11 @@ cross-asset research versions, and their regression tooling.
 
 ## Current State
 
-- CloudCone currently runs `OkxAggressiveTrendV2` in dry-run through
-  `docker-compose.yml` and `runtime/config.json`.
-- `OkxCrossAssetBetaV7` is an offline candidate with unresolved release
-  blockers. Do not start or deploy it without a separate explicit task.
+- CloudCone runs `OkxAggressiveTrendV2` in `/root/freqtrade` and an isolated
+  `OkxCrossAssetBetaV7` candidate in `/root/freqtrade-v7`; both are dry-run.
+- V7's identified engineering blockers are fixed, but it lacks a new untouched
+  forward sample. Keep all live approval gates closed unless the account owner
+  explicitly performs the manual activation runbook.
 - V3-V6 runnable stacks are historical and live under `archive/v1-v6/`.
 
 ## Important Boundaries
