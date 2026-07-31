@@ -8,11 +8,14 @@ services:
     environment:
       RISK_GUARD_STATE_PATH: /freqtrade/user_data/risk_guard/beta-v7-state.json
       BETA_REGIME_STATE_PATH: /freqtrade/user_data/risk_guard/beta-v7-regime.json
+      BETA_V7_RISK_LEDGER_PATH: /freqtrade/user_data/risk_guard/beta-v7-risk-ledger.json
+      BETA_MARKET_SNAPSHOT_PATH: /freqtrade/user_data/okx_beta_markets.snapshot.json
       BETA_MARKET_CALENDAR_PATH: /freqtrade/user_data/market_calendars.beta.json
       BETA_V7_EXIT_POLICY: channel_only
-      RISK_GUARD_VALIDATION_APPROVED: "false"
-      RISK_GUARD_LIVE_APPROVED: "false"
-      RISK_GUARD_SPLUS_APPROVED: "false"
+      BETA_V7_LIVE_APPROVED: "${BETA_V7_LIVE_APPROVED:-false}"
+      RISK_GUARD_VALIDATION_APPROVED: "${RISK_GUARD_VALIDATION_APPROVED:-false}"
+      RISK_GUARD_LIVE_APPROVED: "${RISK_GUARD_LIVE_APPROVED:-false}"
+      RISK_GUARD_SPLUS_APPROVED: "${RISK_GUARD_SPLUS_APPROVED:-false}"
     volumes:
       - "./runtime:/freqtrade/user_data"
     ports:
@@ -41,9 +44,9 @@ services:
       RISK_GUARD_STATE_PATH: /freqtrade/user_data/risk_guard/beta-v7-state.json
       RISK_GUARD_BETA_STATE_PATH: /freqtrade/user_data/risk_guard/beta-v7-regime.json
       RISK_GUARD_AUTO_PROMOTE: "false"
-      RISK_GUARD_VALIDATION_APPROVED: "false"
-      RISK_GUARD_LIVE_APPROVED: "false"
-      RISK_GUARD_SPLUS_APPROVED: "false"
+      RISK_GUARD_VALIDATION_APPROVED: "${RISK_GUARD_VALIDATION_APPROVED:-false}"
+      RISK_GUARD_LIVE_APPROVED: "${RISK_GUARD_LIVE_APPROVED:-false}"
+      RISK_GUARD_SPLUS_APPROVED: "${RISK_GUARD_SPLUS_APPROVED:-false}"
     depends_on:
       freqtrade-beta-v7:
         condition: service_healthy

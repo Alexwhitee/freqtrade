@@ -6,16 +6,17 @@ and pending entry plans. Minimum-contract feasibility is checked before
 ranking so an unaffordable leader does not block a feasible runner-up.
 """
 
+import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from OkxCrossAssetBetaV3 import ASSET_BY_PAIR, _pair
+from OkxCrossAssetBetaV3 import ASSET_BY_PAIR
 from OkxCrossAssetBetaV6 import OkxCrossAssetBetaV6
 
 
@@ -40,19 +41,140 @@ class OkxCrossAssetBetaV7(OkxCrossAssetBetaV6):
     _AGGREGATE_RISK_CAP = 0.0075
     _SINGLE_RISK_CAP = 0.0050
     _UNVERIFIED_STOP_KEY = "v7_initial_stop_unverified"
-    _MIN_UNDERLYING_AMOUNT = {
-        _pair("BTC"): 0.0001,
-        _pair("ETH"): 0.001,
-    }
+    _RISK_LEDGER_VERSION = 1
+    _MARKET_SNAPSHOT_MAX_AGE = timedelta(days=7)
+    # Keep restart-recovered reservations for the full entry-plan TTL.  The
+    # exchange order may still be pending after Freqtrade restarts.
+    _ORPHAN_PLAN_GRACE = timedelta(minutes=10)
 
     @staticmethod
     def _open_trades():
-        try:
-            from freqtrade.persistence import Trade
+        from freqtrade.persistence import Trade
 
-            return Trade.get_open_trades()
-        except (AttributeError, TypeError):
-            return []
+        return Trade.get_open_trades()
+
+    def _risk_ledger_path(self) -> Path:
+        return Path(
+            os.getenv(
+                "BETA_V7_RISK_LEDGER_PATH",
+                "/freqtrade/user_data/risk_guard/beta-v7-risk-ledger.json",
+            )
+        )
+
+    @staticmethod
+    def _utc_timestamp(value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    def _load_risk_plans(self) -> dict[tuple[str, str], dict[str, Any]]:
+        path = self._risk_ledger_path()
+        if not path.exists():
+            self._v7_risk_ledger_valid = True
+            return {}
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if payload.get("version") != self._RISK_LEDGER_VERSION:
+                raise ValueError("unsupported risk ledger version")
+            reservations = payload.get("reservations")
+            if not isinstance(reservations, list):
+                raise ValueError("invalid risk ledger reservations")
+            plans: dict[tuple[str, str], dict[str, Any]] = {}
+            for row in reservations:
+                if not isinstance(row, dict):
+                    raise ValueError("invalid risk ledger row")
+                pair = str(row.get("pair", ""))
+                side = str(row.get("side", "")).lower()
+                stop_distance = self._safe_float(row.get("stop_distance"), 0.0)
+                rate = self._safe_float(row.get("rate"), 0.0)
+                risk_fraction = self._safe_float(row.get("risk_fraction"), -1.0)
+                created_at = datetime.fromisoformat(str(row.get("created_at", "")))
+                created_at = self._utc_timestamp(created_at)
+                if (
+                    pair not in ASSET_BY_PAIR
+                    or side != "long"
+                    or not 0.025 <= stop_distance <= 0.080
+                    or rate <= 0
+                    or not 0 < risk_fraction <= self._SINGLE_RISK_CAP
+                ):
+                    raise ValueError("invalid risk ledger values")
+                plans[(pair, side)] = {
+                    "stop_distance": stop_distance,
+                    "rate": rate,
+                    "risk_fraction": risk_fraction,
+                    "created_at": created_at,
+                }
+            self._v7_risk_ledger_valid = True
+            return plans
+        except (OSError, TypeError, ValueError) as exc:
+            logger.error(
+                "V7 risk ledger is invalid; blocking new entries: %s",
+                exc.__class__.__name__,
+            )
+            self._v7_risk_ledger_valid = False
+            return {}
+
+    def _risk_plans(self) -> dict[tuple[str, str], dict[str, Any]]:
+        plans = getattr(self, "_entry_risk_plans", None)
+        if plans is None:
+            plans = self._load_risk_plans()
+            self._entry_risk_plans = plans
+        return plans
+
+    def _persist_risk_plans(self) -> None:
+        path = self._risk_ledger_path()
+        try:
+            path.parent.mkdir(mode=0o750, parents=True, exist_ok=True)
+            reservations = []
+            for (pair, side), plan in sorted(self._entry_risk_plans.items()):
+                created_at = plan.get("created_at")
+                if not isinstance(created_at, datetime):
+                    raise ValueError("risk plan has no creation time")
+                reservations.append(
+                    {
+                        "pair": pair,
+                        "side": side,
+                        "stop_distance": self._safe_float(
+                            plan.get("stop_distance"),
+                            0.0,
+                        ),
+                        "rate": self._safe_float(plan.get("rate"), 0.0),
+                        "risk_fraction": self._safe_float(
+                            plan.get("risk_fraction"),
+                            0.0,
+                        ),
+                        "created_at": self._utc_timestamp(created_at).isoformat(),
+                    }
+                )
+            pending_risk = min(
+                self._AGGREGATE_RISK_CAP,
+                sum(row["risk_fraction"] for row in reservations),
+            )
+            payload = {
+                "version": self._RISK_LEDGER_VERSION,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "valid": True,
+                "pending_risk_fraction": pending_risk,
+                "remaining_risk_fraction": max(
+                    0.0,
+                    self._AGGREGATE_RISK_CAP - pending_risk,
+                ),
+                "reservations": reservations,
+            }
+            temporary = path.with_name(f".{path.name}.tmp")
+            with temporary.open("w", encoding="utf-8") as handle:
+                json.dump(payload, handle, indent=2, sort_keys=True)
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            if os.name != "nt":
+                os.chmod(temporary, 0o600)
+            os.replace(temporary, path)
+            os.chmod(path, 0o600)
+            self._v7_risk_ledger_valid = True
+        except (OSError, TypeError, ValueError):
+            self._v7_risk_ledger_valid = False
+            raise
 
     def _target_risk_fraction(
         self,
@@ -96,6 +218,7 @@ class OkxCrossAssetBetaV7(OkxCrossAssetBetaV6):
         stop_distance: float,
         rate: float,
         current_time: datetime,
+        risk_fraction: float | None = None,
     ) -> None:
         super()._store_entry_risk_plan(
             pair,
@@ -104,11 +227,45 @@ class OkxCrossAssetBetaV7(OkxCrossAssetBetaV6):
             rate,
             current_time,
         )
+        plan = self._risk_plans()[self._risk_plan_key(pair, side)]
+        plan["risk_fraction"] = min(
+            self._SINGLE_RISK_CAP,
+            max(
+                0.0,
+                self._safe_float(risk_fraction, self._SINGLE_RISK_CAP),
+            ),
+        )
+        self._persist_risk_plans()
         self._invalidate_candidate_cache()
 
     def _release_entry_risk_plan(self, pair: str, side: str) -> None:
-        self._risk_plans().pop(self._risk_plan_key(pair, side), None)
+        removed = self._risk_plans().pop(
+            self._risk_plan_key(pair, side),
+            None,
+        )
+        if removed is not None:
+            self._persist_risk_plans()
         self._invalidate_candidate_cache()
+
+    def _entry_risk_plan(
+        self,
+        pair: str,
+        side: str,
+        current_time: datetime,
+    ) -> dict[str, Any] | None:
+        key = self._risk_plan_key(pair, side)
+        plan = self._risk_plans().get(key)
+        if not plan:
+            return None
+        created_at = plan.get("created_at")
+        now = self._utc_timestamp(current_time)
+        if (
+            not isinstance(created_at, datetime)
+            or now - self._utc_timestamp(created_at) > self._ENTRY_RISK_PLAN_TTL
+        ):
+            self._release_entry_risk_plan(pair, side)
+            return None
+        return plan
 
     def _reserved_risk_fraction(
         self,
@@ -116,7 +273,12 @@ class OkxCrossAssetBetaV7(OkxCrossAssetBetaV6):
         exclude_pair: str | None = None,
         current_time: datetime | None = None,
     ) -> float:
-        if equity <= 0:
+        plans = self._risk_plans()
+        if equity <= 0 or not getattr(
+            self,
+            "_v7_risk_ledger_valid",
+            True,
+        ):
             return self._AGGREGATE_RISK_CAP
         reserved = 0.0
         for trade in self._open_trades():
@@ -170,7 +332,7 @@ class OkxCrossAssetBetaV7(OkxCrossAssetBetaV6):
         else:
             now = now.tz_convert("UTC")
         stale_keys = []
-        for (pair, side), plan in self._risk_plans().items():
+        for (pair, side), plan in plans.items():
             if side != "long" or pair == exclude_pair:
                 continue
             created_at = plan.get("created_at")
@@ -185,16 +347,75 @@ class OkxCrossAssetBetaV7(OkxCrossAssetBetaV6):
                 self._safe_float(plan.get("risk_fraction"), 0.0),
             )
         for key in stale_keys:
-            self._risk_plans().pop(key, None)
+            self._release_entry_risk_plan(*key)
         return min(reserved, self._AGGREGATE_RISK_CAP)
+
+    def _market_snapshot_path(self) -> Path:
+        return Path(
+            os.getenv(
+                "BETA_MARKET_SNAPSHOT_PATH",
+                "/freqtrade/user_data/okx_beta_markets.snapshot.json",
+            )
+        )
+
+    def _minimum_underlying_amount(
+        self,
+        pair: str,
+        current_time: datetime,
+    ) -> float:
+        path = self._market_snapshot_path()
+        try:
+            modified = path.stat().st_mtime_ns
+            cached = getattr(self, "_v7_market_snapshot_cache", None)
+            if cached is None or cached[0] != modified:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+                captured_at = datetime.fromisoformat(str(payload["captured_at"]))
+                markets = {
+                    str(row["symbol"]): row
+                    for row in payload["markets"]
+                    if isinstance(row, dict) and "symbol" in row
+                }
+                cached = (modified, self._utc_timestamp(captured_at), markets)
+                self._v7_market_snapshot_cache = cached
+            _, captured_at, markets = cached
+            now = self._utc_timestamp(current_time)
+            age = now - captured_at
+            if not self._is_backtest() and (
+                age < -timedelta(minutes=5)
+                or age > self._MARKET_SNAPSHOT_MAX_AGE
+            ):
+                raise ValueError("market snapshot is stale")
+            market = markets[pair]
+            amount_min = self._safe_float(market.get("amount_min"), 0.0)
+            contract_size = self._safe_float(
+                market.get("contract_size"),
+                0.0,
+            )
+            if (
+                not market.get("active")
+                or not market.get("swap")
+                or not market.get("linear")
+                or amount_min <= 0
+                or contract_size <= 0
+            ):
+                raise ValueError("invalid market contract metadata")
+            return amount_min * contract_size
+        except (KeyError, OSError, TypeError, ValueError) as exc:
+            logger.error(
+                "V7 market snapshot is unavailable for %s; blocking entry: %s",
+                pair,
+                exc.__class__.__name__,
+            )
+            return float("inf")
 
     def _minimum_margin(
         self,
         pair: str,
         rate: float,
         leverage: float,
+        current_time: datetime,
     ) -> float:
-        amount = self._MIN_UNDERLYING_AMOUNT.get(pair, 0.01)
+        amount = self._minimum_underlying_amount(pair, current_time)
         if rate <= 0 or leverage <= 0:
             return float("inf")
         return rate * amount / leverage
@@ -236,6 +457,7 @@ class OkxCrossAssetBetaV7(OkxCrossAssetBetaV6):
             pair,
             rate,
             leverage,
+            current_time,
         )
 
     def _stable_v6_candidates(
@@ -280,6 +502,20 @@ class OkxCrossAssetBetaV7(OkxCrossAssetBetaV6):
         side = str(args[7] if len(args) > 7 else kwargs.get("side", ""))
         accepted = False
         try:
+            if not bool((getattr(self, "config", {}) or {}).get("dry_run", False)):
+                required = (
+                    "RISK_GUARD_VALIDATION_APPROVED",
+                    "RISK_GUARD_LIVE_APPROVED",
+                    "RISK_GUARD_SPLUS_APPROVED",
+                    "BETA_V7_LIVE_APPROVED",
+                )
+                if any(
+                    os.getenv(name, "false").strip().lower()
+                    not in {"1", "true", "yes", "on"}
+                    for name in required
+                ):
+                    logger.error("V7 live entry rejected: approval gates are closed")
+                    return False
             accepted = super()._confirm_trade_entry(*args, **kwargs)
             return accepted
         finally:
@@ -352,13 +588,8 @@ class OkxCrossAssetBetaV7(OkxCrossAssetBetaV6):
             stop_distance,
             current_rate,
             current_time,
+            risk_fraction=stake * leverage * stop_distance / equity,
         )
-        risk_fraction = stake * leverage * stop_distance / equity
-        plan = self._risk_plans().get(
-            self._risk_plan_key(pair, side),
-        )
-        if plan is not None:
-            plan["risk_fraction"] = risk_fraction
         return stake
 
     def order_filled(
@@ -373,7 +604,6 @@ class OkxCrossAssetBetaV7(OkxCrossAssetBetaV6):
         if getattr(order, "ft_order_side", None) != trade.entry_side:
             return
         side = "short" if trade.is_short else "long"
-        key = self._risk_plan_key(pair, side)
         try:
             stored = self._safe_float(
                 trade.get_custom_data("initial_stop_distance", None),
@@ -386,7 +616,7 @@ class OkxCrossAssetBetaV7(OkxCrossAssetBetaV6):
             stored = 0.0
             unverified = True
         if 0.025 <= stored <= 0.080 and not unverified:
-            self._risk_plans().pop(key, None)
+            self._release_entry_risk_plan(pair, side)
             return
         plan = self._entry_risk_plan(pair, side, current_time)
         if plan is None:
@@ -404,7 +634,7 @@ class OkxCrossAssetBetaV7(OkxCrossAssetBetaV6):
             plan["stop_distance"],
         )
         trade.set_custom_data(self._UNVERIFIED_STOP_KEY, False)
-        self._risk_plans().pop(key, None)
+        self._release_entry_risk_plan(pair, side)
 
     def _initial_stop_distance(
         self,
@@ -429,15 +659,19 @@ class OkxCrossAssetBetaV7(OkxCrossAssetBetaV6):
         trade.set_custom_data(self._UNVERIFIED_STOP_KEY, True)
         return 0.025
 
-    def _reconcile_entry_risk_plans(self) -> None:
+    def _reconcile_entry_risk_plans(self, current_time: datetime) -> None:
         open_pairs = {
             str(getattr(trade, "pair", ""))
             for trade in self._open_trades()
         }
         stale = [
             key
-            for key in self._risk_plans()
+            for key, plan in self._risk_plans().items()
             if key[0] not in open_pairs
+            and isinstance(plan.get("created_at"), datetime)
+            and self._utc_timestamp(current_time)
+            - self._utc_timestamp(plan["created_at"])
+            > self._ORPHAN_PLAN_GRACE
         ]
         for pair, side in stale:
             logger.warning(
@@ -453,7 +687,7 @@ class OkxCrossAssetBetaV7(OkxCrossAssetBetaV6):
         **kwargs,
     ) -> None:
         super().bot_loop_start(current_time, **kwargs)
-        self._reconcile_entry_risk_plans()
+        self._reconcile_entry_risk_plans(current_time)
 
     def _active_exit_policy(self):
         configured = str(

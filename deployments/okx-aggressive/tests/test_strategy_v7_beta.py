@@ -3,10 +3,12 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
 import sys
+import tempfile
 import types
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -106,7 +108,10 @@ class _Trade:
         self.custom_data[key] = value
 
 
-def _strategy():
+def _strategy(
+    ledger_path: Path | None = None,
+    market_snapshot_path: Path | None = None,
+):
     strategy = V7.OkxCrossAssetBetaV7()
     strategy.config = {
         "stake_currency": "USDT",
@@ -120,6 +125,16 @@ def _strategy():
         "margin_cap": 20.0,
     }
     strategy._open_trades = lambda: []
+    strategy._market_snapshot_path = lambda: (
+        market_snapshot_path
+        or DEPLOYMENT_DIR / "runtime" / "okx_beta_markets.snapshot.json"
+    )
+    if ledger_path is None:
+        strategy._entry_risk_plans = {}
+        strategy._v7_risk_ledger_valid = True
+        strategy._persist_risk_plans = lambda: None
+    else:
+        strategy._risk_ledger_path = lambda: ledger_path
     return strategy
 
 
@@ -290,6 +305,54 @@ class CapitalAwareRiskTests(unittest.TestCase):
             trade.custom_data[strategy._UNVERIFIED_STOP_KEY]
         )
 
+    def test_entry_fill_removes_persisted_plan(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ledger = Path(temp_dir) / "risk-ledger.json"
+            strategy = _strategy(ledger_path=ledger)
+            pair = "AAPL/USDT:USDT"
+            now = datetime(2026, 7, 29, tzinfo=timezone.utc)
+            trade = _Trade(pair=pair)
+            order = types.SimpleNamespace(ft_order_side="buy")
+            strategy._store_entry_risk_plan(
+                pair,
+                "long",
+                0.04,
+                100.0,
+                now,
+                risk_fraction=0.0025,
+            )
+
+            strategy.order_filled(pair, trade, order, now)
+
+            payload = json.loads(ledger.read_text(encoding="utf-8"))
+            self.assertEqual(payload["reservations"], [])
+            self.assertEqual(payload["pending_risk_fraction"], 0.0)
+
+    def test_expired_plan_is_removed_from_persisted_ledger(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ledger = Path(temp_dir) / "risk-ledger.json"
+            strategy = _strategy(ledger_path=ledger)
+            pair = "AAPL/USDT:USDT"
+            now = datetime(2026, 7, 29, tzinfo=timezone.utc)
+            strategy._store_entry_risk_plan(
+                pair,
+                "long",
+                0.04,
+                100.0,
+                now,
+                risk_fraction=0.0025,
+            )
+
+            plan = strategy._entry_risk_plan(
+                pair,
+                "long",
+                now + strategy._ENTRY_RISK_PLAN_TTL + timedelta(seconds=1),
+            )
+
+            payload = json.loads(ledger.read_text(encoding="utf-8"))
+            self.assertIsNone(plan)
+            self.assertEqual(payload["reservations"], [])
+
     def test_entry_fill_persists_verified_stop_and_releases_plan(self):
         strategy = _strategy()
         pair = "AAPL/USDT:USDT"
@@ -326,9 +389,160 @@ class CapitalAwareRiskTests(unittest.TestCase):
             datetime(2026, 7, 29, tzinfo=timezone.utc),
         )
 
-        strategy._reconcile_entry_risk_plans()
+        strategy._reconcile_entry_risk_plans(
+            datetime(2026, 7, 29, 0, 10, 1, tzinfo=timezone.utc)
+        )
 
         self.assertNotIn((pair, "long"), strategy._risk_plans())
+
+    def test_recent_orphaned_plan_is_retained_during_order_grace(self):
+        strategy = _strategy()
+        pair = "AAPL/USDT:USDT"
+        now = datetime(2026, 7, 29, tzinfo=timezone.utc)
+        strategy._store_entry_risk_plan(pair, "long", 0.04, 100.0, now)
+
+        strategy._reconcile_entry_risk_plans(now + timedelta(minutes=1))
+
+        self.assertIn((pair, "long"), strategy._risk_plans())
+
+    def test_risk_plan_survives_strategy_restart(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ledger = Path(temp_dir) / "risk-ledger.json"
+            strategy = _strategy(ledger_path=ledger)
+            strategy._last_candle = lambda pair: _candle(pair)
+            now = datetime(2026, 7, 29, tzinfo=timezone.utc)
+
+            stake = strategy._custom_stake_amount(
+                "AAPL/USDT:USDT",
+                now,
+                100.0,
+                5.0,
+                0.1,
+                20.0,
+                2.0,
+                "trend_long",
+                "long",
+            )
+            restarted = _strategy(ledger_path=ledger)
+            plan = restarted._risk_plans()[("AAPL/USDT:USDT", "long")]
+
+            self.assertEqual(stake, 4.0)
+            self.assertAlmostEqual(plan["risk_fraction"], 0.0025)
+            payload = json.loads(ledger.read_text(encoding="utf-8"))
+            self.assertTrue(payload["valid"])
+            self.assertEqual(len(payload["reservations"]), 1)
+
+    def test_corrupt_risk_ledger_blocks_new_entries(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ledger = Path(temp_dir) / "risk-ledger.json"
+            ledger.write_text("not-json", encoding="utf-8")
+            strategy = _strategy(ledger_path=ledger)
+            strategy._last_candle = lambda pair: _candle(pair)
+
+            stake = strategy._custom_stake_amount(
+                "AAPL/USDT:USDT",
+                datetime(2026, 7, 29, tzinfo=timezone.utc),
+                100.0,
+                5.0,
+                0.1,
+                20.0,
+                2.0,
+                "trend_long",
+                "long",
+            )
+
+            self.assertEqual(stake, 0.0)
+            self.assertFalse(strategy._v7_risk_ledger_valid)
+
+    def test_risk_ledger_write_failure_fails_stake_closed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            blocking_file = Path(temp_dir) / "not-a-directory"
+            blocking_file.write_text("block", encoding="utf-8")
+            strategy = _strategy(
+                ledger_path=blocking_file / "risk-ledger.json"
+            )
+            strategy._last_candle = lambda pair: _candle(pair)
+
+            stake = strategy.custom_stake_amount(
+                "AAPL/USDT:USDT",
+                datetime(2026, 7, 29, tzinfo=timezone.utc),
+                100.0,
+                5.0,
+                0.1,
+                20.0,
+                2.0,
+                "trend_long",
+                "long",
+            )
+
+            self.assertEqual(stake, 0.0)
+            self.assertFalse(strategy._v7_risk_ledger_valid)
+
+    def test_stale_market_snapshot_blocks_candidate(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            snapshot_path = Path(temp_dir) / "markets.json"
+            payload = json.loads(
+                (
+                    DEPLOYMENT_DIR
+                    / "runtime"
+                    / "okx_beta_markets.snapshot.json"
+                ).read_text(encoding="utf-8")
+            )
+            payload["captured_at"] = "2026-01-01T00:00:00+00:00"
+            snapshot_path.write_text(json.dumps(payload), encoding="utf-8")
+            strategy = _strategy(market_snapshot_path=snapshot_path)
+            strategy._is_backtest = lambda: False
+            pair = "AAPL/USDT:USDT"
+            strategy._last_candle = lambda _pair: _candle(pair)
+
+            feasible = strategy._candidate_is_capital_feasible(
+                {
+                    "pair": pair,
+                    "side": "long",
+                    "model": "trend_long",
+                    "score": 90.0,
+                },
+                datetime(2026, 7, 29, tzinfo=timezone.utc),
+            )
+
+            self.assertFalse(feasible)
+
+    def test_live_entry_requires_every_approval(self):
+        strategy = _strategy()
+        strategy.config["dry_run"] = False
+        pair = "AAPL/USDT:USDT"
+        now = datetime(2026, 7, 29, tzinfo=timezone.utc)
+        gates = (
+            "RISK_GUARD_VALIDATION_APPROVED",
+            "RISK_GUARD_LIVE_APPROVED",
+            "RISK_GUARD_SPLUS_APPROVED",
+            "BETA_V7_LIVE_APPROVED",
+        )
+        for closed_gate in gates:
+            with self.subTest(closed_gate=closed_gate):
+                strategy._store_entry_risk_plan(
+                    pair,
+                    "long",
+                    0.04,
+                    100.0,
+                    now,
+                )
+                environment = {gate: "true" for gate in gates}
+                environment[closed_gate] = "false"
+                with patch.dict(os.environ, environment, clear=False):
+                    accepted = strategy._confirm_trade_entry(
+                        pair,
+                        "market",
+                        0.04,
+                        100.0,
+                        "GTC",
+                        now,
+                        "trend_long",
+                        "long",
+                    )
+
+                self.assertFalse(accepted)
+                self.assertNotIn((pair, "long"), strategy._risk_plans())
 
     def test_btc_minimum_is_regime_dependent_at_80_usdt(self):
         strategy = _strategy()
@@ -422,10 +636,9 @@ class IsolationTests(unittest.TestCase):
         self.assertIn("127.0.0.1:8086:8080", compose)
         self.assertIn("trades-beta-v7.sqlite", compose)
         self.assertIn("OkxCrossAssetBetaV7", compose)
-        self.assertEqual(
-            compose.count('RISK_GUARD_LIVE_APPROVED: "false"'),
-            2,
-        )
+        self.assertEqual(compose.count("${RISK_GUARD_LIVE_APPROVED:-false}"), 2)
+        self.assertIn("${BETA_V7_LIVE_APPROVED:-false}", compose)
+        self.assertIn("BETA_V7_RISK_LEDGER_PATH", compose)
 
     def test_v6_baseline_hashes_are_frozen(self):
         manifest = json.loads(

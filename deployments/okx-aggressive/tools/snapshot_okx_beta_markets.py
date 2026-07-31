@@ -3,8 +3,11 @@
 
 from __future__ import annotations
 
+import argparse
 import json
+import os
 from datetime import datetime, timezone
+from pathlib import Path
 
 import ccxt
 
@@ -31,7 +34,7 @@ BASES = (
 )
 
 
-def main() -> None:
+def build_snapshot() -> dict[str, object]:
     exchange = ccxt.okx(
         {
             "enableRateLimit": True,
@@ -60,19 +63,38 @@ def main() -> None:
                 "price_precision": market.get("precision", {}).get("price"),
             }
         )
-    print(
-        json.dumps(
-            {
-                "captured_at": datetime.now(timezone.utc).isoformat(),
-                "exchange": "OKX",
-                "ccxt_version": ccxt.__version__,
-                "market_type": "swap",
-                "markets": rows,
-            },
-            indent=2,
-            sort_keys=True,
-        )
+    return {
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "exchange": "OKX",
+        "ccxt_version": ccxt.__version__,
+        "market_type": "swap",
+        "markets": rows,
+    }
+
+
+def write_snapshot(path: Path, snapshot: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_text(
+        json.dumps(snapshot, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
     )
+    os.replace(temporary, path)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help="Atomically replace this snapshot instead of printing JSON.",
+    )
+    args = parser.parse_args()
+    snapshot = build_snapshot()
+    if args.output:
+        write_snapshot(args.output, snapshot)
+    else:
+        print(json.dumps(snapshot, indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":
