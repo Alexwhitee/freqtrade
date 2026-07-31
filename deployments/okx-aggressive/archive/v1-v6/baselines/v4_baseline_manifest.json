@@ -1,0 +1,23 @@
+{
+  "created_at": "2026-07-27T00:00:00Z",
+  "repository_head": "f85738ddc0216d2ecb716d47f95fb8efc1ca6f2d",
+  "v3_strategy_sha256": "ed23dab3bdd67d5e2fbdae0e6408a2d6fdf78fe7ddc6583ffaa9a333a7d76015",
+  "v3_config_sha256": "07f382b96902603b13bb060078706f4bbf3e6b5dea2887960c561176b716dfea",
+  "v3_execution_baseline": {
+    "archive": "backtest-result-2026-07-27_07-10-57.zip",
+    "timerange": "2026-04-22T02:00:00Z/2026-07-27T01:00:00Z",
+    "closed_trades": 13,
+    "profit_abs_usdt": -0.49711743,
+    "profit_pct": -1.6570581,
+    "profit_factor": 0.2447989,
+    "sharpe": -1.09,
+    "max_drawdown_pct": 1.66,
+    "long_trades": 13,
+    "short_trades": 0
+  },
+  "holdout_policy": {
+    "diagnostic_only_timerange": "2026-04-22/2026-07-27",
+    "new_okx_forward_start": "2026-07-28",
+    "economic_tuning_allowed": false
+  }
+}

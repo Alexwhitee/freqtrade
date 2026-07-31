@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "baseline": "OkxCrossAssetBetaV6",
+  "files": {
+    "runtime/strategies/OkxCrossAssetBetaV6.py": "cecaf1f0f435e9611016885daf7e58818cbe1d0fc8d15e1d8ff3358ea4c298cb",
+    "archive/v1-v6/runtime/config.beta-v6.json": "f522f4bb67773a17d46e6a18599e999785caedb26921e4c8e3eb02610561f736",
+    "archive/v1-v6/docker-compose.beta-v6.yml": "ae8651925f98d2a0b657d13f70656e19ba306555ff3ca3969ed93606ff8dc3eb"
+  }
+}

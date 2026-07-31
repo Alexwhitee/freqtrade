@@ -1,0 +1,15 @@
+{
+  "baseline": "OkxCrossAssetBetaV4",
+  "captured_at": "2026-07-28",
+  "files": {
+    "archive/v1-v6/docker-compose.beta-v4.yml": "9b11a0d5b56bfd582b3e3d03277a09fc4f6df5c8bbd8a0ef353da5ad9d60df2d",
+    "archive/v1-v6/runtime/config.beta-v4.json": "51abad9234c827ea6a5e6e5b33bd6261a6d0056bc984c919cc0ce2fed02914e0",
+    "runtime/strategies/OkxCrossAssetBetaV4.py": "706ae1355fe3b8481fdc6b84042318a39601d7d4e5004c8a43b17a79d0e21115"
+  },
+  "result": {
+    "archive_sha256": "7cf82df2569746be89417431eeed2b154f544997ca362df06528353dac5071ea",
+    "interval": "2026-04-22/2026-07-27",
+    "profit_abs_usdt": 0.054941,
+    "trades": 1
+  }
+}

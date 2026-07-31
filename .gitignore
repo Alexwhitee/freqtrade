@@ -1,5 +1,7 @@
 # Freqtrade rules
 config*.json
+!deployments/okx-aggressive/runtime/config.beta-v7.json
+!deployments/okx-aggressive/archive/v1-v6/runtime/config.beta*.json
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
@@ -105,6 +107,7 @@ target/
 .idea
 .vscode
 .trae-html-share-packages/
+.uploads/beta-v5-research/
 
 .*_cache/
 

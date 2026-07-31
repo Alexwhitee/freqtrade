@@ -1,0 +1,9 @@
+{
+  "baseline": "OkxCrossAssetBetaV5",
+  "captured_at": "2026-07-28",
+  "files": {
+    "runtime/strategies/OkxCrossAssetBetaV5.py": "9c6ca720db9e24888c5d84c4280df114423ea8efedb76e1f61cc3c6209d4eb7a",
+    "archive/v1-v6/runtime/config.beta-v5.json": "aa0da8161f93040c801db2aab7504662ab77d122f97f825a84ed7c8f08d2051b",
+    "archive/v1-v6/docker-compose.beta-v5.yml": "dd13fe5297f4875343efea0c5dbd25232caa7dd484f6bfef9bcb2414dd7e3111"
+  }
+}
